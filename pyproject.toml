@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "humanoid-gym"
+version = "0.1.0"
+description = "Gymnasium + MuJoCo environments for the 3D-printed Open G1 humanoid"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["gymnasium>=1.0", "mujoco>=3.1", "numpy"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+openG1 = ["assets/*.xml", "assets/mesh/*.STL"]
