@@ -2,6 +2,7 @@
   <!-- Open G1: 3D-printed Unitree-G1-shaped humanoid (github.com/open3dhumanoid/humanoid)
        * legs / pelvis / waist: Unitree G1 29-DoF kinematics, G1 inertias and torque limits
          -> TODO: replace with your Berkeley-style printed leg actuators (torque, armature, masses)
+       * head: printed dome head (head.scad) with a RealSense D455; camera 'head_d455'
        * torso: torso_link_rev_1_0, printed (rev 1.0 shoulder height 0.24778 m), 2x DS3235 shoulder servos
        * arms: 7-DoF, hobby servos (DS3235 / KST X10 Pro / MG92B), printed-part masses and inertias
          computed from the CAD at 0.56 g/cm3 (PLA ~45 % solid) + servo masses
@@ -32,6 +33,7 @@
     <mesh name="waist_yaw_link" file="waist_yaw_link.STL"/>   <!-- copy from unitree g1_description/meshes -->
     <mesh name="waist_roll_link" file="waist_roll_link.STL"/>   <!-- copy from unitree g1_description/meshes -->
     <mesh name="torso_link_rev_1_0" file="torso_link_rev_1_0.STL"/>
+    <mesh name="open_g1_dome_head" file="open_g1_dome_head.STL"/>
     <mesh name="left_shoulder_pitch_link" file="left_shoulder_pitch_link.STL"/>
     <mesh name="left_shoulder_roll_link" file="left_shoulder_roll_link.STL"/>
     <mesh name="left_shoulder_yaw_link" file="left_shoulder_yaw_link.STL"/>
@@ -153,6 +155,12 @@
             <joint name="waist_pitch_joint" axis="0 1 0" range="-0.52 0.52"/>
             <geom class="visual" mesh="torso_link_rev_1_0"/>
             <geom class="collision" mesh="torso_link_rev_1_0"/>
+            <body name="head_link" pos="0.0039635 0 -0.044">
+              <inertial pos="0.0142919 6.83838e-06 0.400164" mass="0.6069" fullinertia="0.00251303 0.00305992 0.00365574 9.39831e-08 -8.82475e-05 2.335e-07"/>   <!-- printed dome + D455 + 2x SG90 -->
+              <geom class="visual" mesh="open_g1_dome_head" rgba="0.4 0.4 0.43 1"/>
+              <geom class="collision" mesh="open_g1_dome_head"/>
+              <camera name="head_d455" pos="0.095 0 0.402" xyaxes="0 -1 0 0 0 1" fovy="58"/>   <!-- D455 glass, looking along +x -->
+            </body>
             <site name="imu_in_torso" size="0.01" pos="-0.03959 -0.00224 0.14792"/>
             <body name="left_shoulder_pitch_link" pos="0.0039563 0.10022 0.24778" quat="0.990264 0.139201 1.38722e-05 -9.86868e-05">
               <inertial pos="-0.000237913 0.0358463 -0.00795706" mass="0.20434" fullinertia="0.000137047 0.00011978 0.000107649 -5.74413e-08 -5.3067e-07 1.31881e-05"/>
@@ -191,6 +199,7 @@
                           <geom class="collision" mesh="left_wrist_yaw_link"/>
                           <geom class="visual" mesh="left_rubber_hand_open3d"/>
                           <geom class="collision" mesh="left_rubber_hand_open3d"/>
+                          <site name="left_hand" pos="0.1 0 0" size="0.01" rgba="0 1 0 0.5"/>
                         </body>
                       </body>
                     </body>
@@ -235,6 +244,7 @@
                           <geom class="collision" mesh="right_wrist_yaw_link"/>
                           <geom class="visual" mesh="right_rubber_hand_open3d"/>
                           <geom class="collision" mesh="right_rubber_hand_open3d"/>
+                          <site name="right_hand" pos="0.1 0 0" size="0.01" rgba="0 1 0 0.5"/>
                         </body>
                       </body>
                     </body>

@@ -1,4 +1,7 @@
 """Run the Gymnasium env with random actions (python examples/random_policy.py)."""
+from openG1._display_env import fix_snap_env
+fix_snap_env(reexec=True)   # must run before anything opens a window (VS Code snap fix)
+
 import gymnasium as gym
 import openG1  # noqa: F401  (registers the environments)
 

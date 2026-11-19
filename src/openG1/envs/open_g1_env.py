@@ -11,6 +11,8 @@ from gymnasium import utils
 from gymnasium.envs.mujoco import MujocoEnv
 from gymnasium.spaces import Box
 
+from ..meshes import check_meshes
+
 DEFAULT_XML = str(Path(__file__).resolve().parent.parent / "assets" / "open_g1.xml")
 DEFAULT_CAMERA = {"trackbodyid": 1, "distance": 3.0, "lookat": np.array((0.0, 0.0, 0.8)), "elevation": -15.0}
 
@@ -37,6 +39,8 @@ class OpenG1StandEnv(MujocoEnv, utils.EzPickle):
         self._ctrl_cost_weight = ctrl_cost_weight
         self._reset_noise_scale = reset_noise_scale
 
+        if xml_file == DEFAULT_XML:
+            check_meshes()              # clear message if the Unitree leg meshes are missing
         MujocoEnv.__init__(self, xml_file, frame_skip, observation_space=None,
                            default_camera_config=DEFAULT_CAMERA, **kwargs)
         self.metadata["render_fps"] = int(np.round(1.0 / self.dt))
