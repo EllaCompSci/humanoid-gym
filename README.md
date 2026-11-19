@@ -12,7 +12,7 @@ The full model is the G1 29-DoF MJCF, changed to match the printed robot:
 
 | Part | Change from the G1 model |
 |---|---|
-| Torso | `torso_link_rev_1_0` (rev 1.0, shoulders at z = 0.24778 m). Mass and inertia are computed from the printed part plus 2 shoulder servos. |
+| Torso | `torso_link_rev_1_0` shape (rev 1.0, shoulders at z = 0.24778 m). Mass and inertia are for the **framed torso**: 2020 aluminium frame, printed panels and shoulder blocks, 2 shoulder servos, fasteners (2.03 kg, no electronics). |
 | Arms | 7-DoF on hobby servos. Masses and inertias are computed from the printed CAD plus servo masses. The servo joints use **position actuators** with servo torque limits and armature, damping and friction values. |
 | Joint ranges | The G1 range clipped to the servo's travel, centred on the middle of the G1 range. Fit each servo horn at that centre angle. |
 | Head | The printed dome head (`head.scad`) with a RealSense D455, as `open_g1_dome_head.STL`. It is a fixed `head_link` body with its own mass (0.61 kg: printed parts, D455 and 2 brow servos) and a `head_d455` camera at the camera glass. |
@@ -157,7 +157,7 @@ Mass assumptions:
 - **Print density:** PLA at about 45% solid, i.e. 0.56 g/cm³.
 - **Servos:** DS3235 60 g, X10 Pro 25 g, MG92B 13.8 g.
 - **Head:** D455 116 g (datasheet), SG90 9 g each.
-- **Torso:** the printed torso is about 2.1 kg. Add your battery and electronics to its inertial in the XML.
+- **Torso:** the framed torso is about 2.03 kg (1.05 kg printed at 1.1 g/cm³ for its 3–4 mm walls, 0.61 kg of 2020, servos, fasteners). Add your compute board, drivers and wiring to its inertial in `tools/mass_properties.json`.
 
 ## Troubleshooting
 **`GLib-GIO-ERROR ... does not contain a key named 'antialiasing'`, then `Aborted (core dumped)`**
