@@ -64,9 +64,16 @@ LM=json.load(open(__import__("os").path.join(__import__("os").path.dirname(__fil
 LEG_ACT=dict(tau=23.1,arm=0.02,damp=0.1,fric=0.3)
 LEG_JOINTS=("hip_pitch","hip_roll","hip_yaw","knee","ankle_pitch","ankle_roll")
 OUR_LEG={"hip_pitch_link":"hip_pitch_link_integrated","hip_roll_link":"hip_roll_link_integrated",
-         "hip_yaw_link":"hip_yaw_link_knee_integrated","knee_link":"knee_link_integrated"}
+         "hip_yaw_link":"hip_yaw_link_knee_integrated","knee_link":"knee_link_ankle","ankle_roll_link":"ankle_roll_link_ears"}
+# ankle: two 6512s in the shin (A upper, B lower) drive pitch + roll through cranks and push rods.
+# Modelled as fixed tendons: crank angle_i = J[i] . [pitch, roll] (linearised at zero, from the
+# exact linkage in OpenScad/legs/ankle/gen_ankle.py), so motor torque maps to J^T tau at the joints.
+ANK=LM["ankle_linkage"]; ANK_J=np.array(ANK["jacobian"])
+def ank_J(side): return ANK_J*np.array([1,-1]) if side=="right" else ANK_J      # right = mirror: roll column flips
+def ank_joint_params(j):      # motor armature / losses reflected through the linkage onto ankle joint j
+    c=ANK_J[:,j]; return dict(arm=LEG_ACT["arm"]*float(c@c), damp=LEG_ACT["damp"]*float(c@c), fric=LEG_ACT["fric"]*float(np.abs(c).sum()))
 LEG_RGBA={"hip_pitch_link":"0.83 0.71 0.2 1","hip_roll_link":"0.44 0.68 0.42 1","hip_yaw_link":"0.78 0.77 0.83 1",
-          "knee_link":"0.36 0.5 0.79 1"}
+          "knee_link":"0.36 0.5 0.79 1","ankle_roll_link":"0.2 0.2 0.2 1"}
 ACT_RGBA="0.88 0.48 0.22 1"
 def inertial_lm(d,side="left"):
     c=np.array(d["com"]); I=np.array(d["I"])
@@ -83,19 +90,20 @@ def leg(side):
         if link in OUR_LEG:
             d=LM[link]; s.append(f'{ind}  {inertial_lm(d,side)}   <!-- printed {d["printed_mass"]:.3f} kg + {d["actuators"]} built + {d["planned_actuators"]} planned 6512 -->')
         else:
-            s.append(f'{ind}  {ET.tostring(b.find("inertial"),encoding="unicode").strip()}   <!-- G1 foot (not printed yet) -->')
-        s.append(f'{ind}  <joint name="{side}_{jn}_joint" axis="{j.get("axis")}" range="{j.get("range")}" armature="{LEG_ACT["arm"]}" damping="{LEG_ACT["damp"]}" frictionloss="{LEG_ACT["fric"]}"/>')
+            s.append(f'{ind}  {ET.tostring(b.find("inertial"),encoding="unicode").strip()}   <!-- G1 ankle pitch link (cross) -->')
+        jp=ank_joint_params(0 if jn=="ankle_pitch" else 1) if jn.startswith("ankle") else LEG_ACT
+        s.append(f'{ind}  <joint name="{side}_{jn}_joint" axis="{j.get("axis")}" range="{j.get("range")}" armature="{jp["arm"]:.4g}" damping="{jp["damp"]:.4g}" frictionloss="{jp["fric"]:.4g}"/>')
         if link in OUR_LEG:
             m=f"og1_{side}_{OUR_LEG[link]}"
             s.append(f'{ind}  <geom class="visual" mesh="{m}" rgba="{LEG_RGBA[link]}"/>')
-            if link!="hip_roll_link": s.append(f'{ind}  <geom class="collision" mesh="{m}"/>')
+            if link not in ("hip_roll_link","ankle_roll_link"): s.append(f'{ind}  <geom class="collision" mesh="{m}"/>')
             s+=act_geoms(LM[link]["act_geoms" if side=="left" else "act_geoms_right"] or [],ind+"  ")
         else:
             s.append(f'{ind}  <geom class="visual" mesh="{side}_{link}" rgba="0.2 0.2 0.2 1"/>')
-            if jn=="ankle_roll":
-                for g in b.findall("geom"):
-                    if g.get("type") is None and g.get("size"):      # G1 foot contact spheres
-                        s.append(f'{ind}  <geom size="{g.get("size")}" pos="{g.get("pos")}" rgba="0.2 0.2 0.2 1"/>')
+        if jn=="ankle_roll":
+            for g in b.findall("geom"):
+                if g.get("type") is None and g.get("size"):      # G1 foot contact spheres (same sole shape)
+                    s.append(f'{ind}  <geom size="{g.get("size")}" pos="{g.get("pos")}" rgba="0.2 0.2 0.2 1"/>')
         close.append(f"{ind}</body>"); ind+="  "
     return "\n".join(s+close[::-1])
 legs_block=leg("left")+"\n"+leg("right")+"\n"
@@ -112,7 +120,7 @@ def head(ind):
        f'  <camera name="head_d455" pos="0.095 0 0.402" xyaxes="0 -1 0 0 0 1" fovy="58"/>   <!-- D455 glass, looking along +x -->',
        f'</body>']
     return "\n".join(ind+l for l in L)
-leg_meshes=[f"{s}_{l}" for s in ("left","right") for l in ("ankle_pitch_link","ankle_roll_link")]   # Unitree G1 feet
+leg_meshes=[f"{s}_ankle_pitch_link" for s in ("left","right")]   # Unitree G1 ankle cross
 og1=["og1_act6512","og1_pelvis_left_half_waist","og1_pelvis_right_half_waist","og1_waist_stator_carrier",
      "og1_waist_yaw_link_integrated","og1_torso_frame"]+[f"og1_{s}_{p}" for s in ("left","right") for p in OUR_LEG.values()]
 ours=["torso_link_rev_1_0","open_g1_dome_head"]+[f"{s}_{l}" for s in ("left","right") for l in ("shoulder_pitch_link","shoulder_roll_link","shoulder_yaw_link","elbow_link","wrist_roll_link","wrist_pitch_link","wrist_yaw_link","rubber_hand_open3d")]
@@ -120,13 +128,16 @@ EXCL=[("pelvis","waist_yaw_link"),("pelvis","torso_link")]+[p for sd in ("left",
     ("pelvis",f"{sd}_hip_roll_link"),("pelvis",f"{sd}_hip_yaw_link"),(f"{sd}_hip_pitch_link",f"{sd}_hip_yaw_link"),
     (f"{sd}_hip_roll_link",f"{sd}_knee_link"),(f"{sd}_hip_yaw_link",f"{sd}_ankle_pitch_link"),
     (f"{sd}_knee_link",f"{sd}_ankle_roll_link")]]
+ANK_TENDONS=chr(10).join(f'    <fixed name="{sd}_ankle_{k}"><joint joint="{sd}_ankle_pitch_joint" coef="{ank_J(sd)[i,0]:.4f}"/><joint joint="{sd}_ankle_roll_joint" coef="{ank_J(sd)[i,1]:.4f}"/></fixed>   <!-- crank angle of actuator {k} -->'
+                          for sd in ("left","right") for i,k in enumerate("AB"))
 CONTACT_EXCLUDES=chr(10).join(f'    <exclude body1="{a}" body2="{b}"/>' for a,b in EXCL)
 X=f'''<mujoco model="open_g1">
   <!-- Open G1: 3D-printed Unitree-G1-shaped humanoid (github.com/open3dhumanoid/humanoid)
        * legs / pelvis / waist: printed parts (STL/legs) on G1 kinematics, 6512 cycloidal actuators
          (Berkeley Humanoid Lite design) on every leg joint and the waist yaw, 23-DoF-style yaw-only waist.
-         Hip yaw and ankle actuators are not designed yet: they are in the masses as 6512s, the feet
-         are the Unitree G1 ankle links. Masses from tools/legs/build_sim_legs.py.
+         Ankles: two 6512s in each shin drive pitch + roll through cranks and push rods (G1-style parallel
+         ankle), modelled as fixed tendons; the foot is the G1 foot printed, with rod ears. The hip yaw
+         actuator is not designed yet: it is in the masses as a 6512. Masses from tools/legs/build_sim_legs.py.
        * head: printed dome head (head.scad) with a RealSense D455; camera 'head_d455'
        * torso: 2020-aluminium frame with printed panels (STL/torso_frame), G1 rev 1.0 shape; collision uses
          the G1 rev 1.0 shell (same outside); 2x DS3235 shoulder servos
@@ -178,13 +189,18 @@ X=f'''<mujoco model="open_g1">
       </body>
     </body>
   </worldbody>
+  <tendon>
+{ANK_TENDONS}
+  </tendon>
   <contact>
     <!-- printed parts nest closely: skip the convex-hull contacts between neighbouring links -->
 {CONTACT_EXCLUDES}
   </contact>
   <actuator>
     <!-- legs + waist yaw: 6512 cycloidal actuators, torque control, peak {LEG_ACT["tau"]} N.m -->
-{chr(10).join(f'    <motor name="{j}" joint="{j}_joint" ctrlrange="-{LEG_ACT["tau"]} {LEG_ACT["tau"]}"/>' for j in [f"{s}_{n}" for s in ("left","right") for n in LEG_JOINTS]+["waist_yaw"])}
+{chr(10).join(f'    <motor name="{j}" joint="{j}_joint" ctrlrange="-{LEG_ACT["tau"]} {LEG_ACT["tau"]}"/>' for j in [f"{s}_{n}" for s in ("left","right") for n in LEG_JOINTS[:4]]+["waist_yaw"])}
+    <!-- ankles: the two shin actuators of each leg, through the crank-and-rod linkage (tendons above) -->
+{chr(10).join(f'    <motor name="{s}_ankle_{k}" tendon="{s}_ankle_{k}" ctrlrange="-{LEG_ACT["tau"]} {LEG_ACT["tau"]}"/>' for s in ("left","right") for k in "AB")}
     <!-- arms: hobby servos as position actuators; kp saturates at ~6 deg error -->
 {chr(10).join(actL)}
 {chr(10).join(actR)}

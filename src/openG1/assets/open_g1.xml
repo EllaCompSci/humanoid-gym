@@ -2,8 +2,9 @@
   <!-- Open G1: 3D-printed Unitree-G1-shaped humanoid (github.com/open3dhumanoid/humanoid)
        * legs / pelvis / waist: printed parts (STL/legs) on G1 kinematics, 6512 cycloidal actuators
          (Berkeley Humanoid Lite design) on every leg joint and the waist yaw, 23-DoF-style yaw-only waist.
-         Hip yaw and ankle actuators are not designed yet: they are in the masses as 6512s, the feet
-         are the Unitree G1 ankle links. Masses from tools/legs/build_sim_legs.py.
+         Ankles: two 6512s in each shin drive pitch + roll through cranks and push rods (G1-style parallel
+         ankle), modelled as fixed tendons; the foot is the G1 foot printed, with rod ears. The hip yaw
+         actuator is not designed yet: it is in the masses as a 6512. Masses from tools/legs/build_sim_legs.py.
        * head: printed dome head (head.scad) with a RealSense D455; camera 'head_d455'
        * torso: 2020-aluminium frame with printed panels (STL/torso_frame), G1 rev 1.0 shape; collision uses
          the G1 rev 1.0 shell (same outside); 2x DS3235 shoulder servos
@@ -20,9 +21,7 @@
   </default>
   <asset>
     <mesh name="left_ankle_pitch_link" file="left_ankle_pitch_link.STL"/>   <!-- Unitree g1_description (BSD-3) -->
-    <mesh name="left_ankle_roll_link" file="left_ankle_roll_link.STL"/>   <!-- Unitree g1_description (BSD-3) -->
     <mesh name="right_ankle_pitch_link" file="right_ankle_pitch_link.STL"/>   <!-- Unitree g1_description (BSD-3) -->
-    <mesh name="right_ankle_roll_link" file="right_ankle_roll_link.STL"/>   <!-- Unitree g1_description (BSD-3) -->
     <mesh name="og1_act6512" file="og1_act6512.STL"/>
     <mesh name="og1_pelvis_left_half_waist" file="og1_pelvis_left_half_waist.STL"/>
     <mesh name="og1_pelvis_right_half_waist" file="og1_pelvis_right_half_waist.STL"/>
@@ -32,11 +31,13 @@
     <mesh name="og1_left_hip_pitch_link_integrated" file="og1_left_hip_pitch_link_integrated.STL"/>
     <mesh name="og1_left_hip_roll_link_integrated" file="og1_left_hip_roll_link_integrated.STL"/>
     <mesh name="og1_left_hip_yaw_link_knee_integrated" file="og1_left_hip_yaw_link_knee_integrated.STL"/>
-    <mesh name="og1_left_knee_link_integrated" file="og1_left_knee_link_integrated.STL"/>
+    <mesh name="og1_left_knee_link_ankle" file="og1_left_knee_link_ankle.STL"/>
+    <mesh name="og1_left_ankle_roll_link_ears" file="og1_left_ankle_roll_link_ears.STL"/>
     <mesh name="og1_right_hip_pitch_link_integrated" file="og1_right_hip_pitch_link_integrated.STL"/>
     <mesh name="og1_right_hip_roll_link_integrated" file="og1_right_hip_roll_link_integrated.STL"/>
     <mesh name="og1_right_hip_yaw_link_knee_integrated" file="og1_right_hip_yaw_link_knee_integrated.STL"/>
-    <mesh name="og1_right_knee_link_integrated" file="og1_right_knee_link_integrated.STL"/>
+    <mesh name="og1_right_knee_link_ankle" file="og1_right_knee_link_ankle.STL"/>
+    <mesh name="og1_right_ankle_roll_link_ears" file="og1_right_ankle_roll_link_ears.STL"/>
     <mesh name="torso_link_rev_1_0" file="torso_link_rev_1_0.STL"/>
     <mesh name="open_g1_dome_head" file="open_g1_dome_head.STL"/>
     <mesh name="left_shoulder_pitch_link" file="left_shoulder_pitch_link.STL"/>
@@ -91,18 +92,20 @@
             <geom class="collision" mesh="og1_left_hip_yaw_link_knee_integrated"/>
             <geom class="visual" mesh="og1_act6512" pos="-0.078273 0.0175222 -0.17734" quat="0.704405 -0.704405 0.0617577 0.0617577" rgba="0.88 0.48 0.22 1"/>
             <body name="left_knee_link" pos="-0.078273 0.0021489 -0.17734" quat="0.996179 0 0.0873386 0">
-              <inertial pos="0.00183581 -0.00933821 -0.103282" mass="1.2846" fullinertia="0.00419306 0.00425451 0.000688512 -2.17493e-05 5.2392e-05 9.52837e-06"/>   <!-- printed 0.440 kg + 0 built + 2 planned 6512 -->
+              <inertial pos="0.00366502 0.000955489 -0.106772" mass="1.1487" fullinertia="0.00442225 0.00425805 0.000871871 2.94835e-06 2.89369e-05 -0.000751829"/>   <!-- printed 0.288 kg + 2 built + 0 planned 6512 -->
               <joint name="left_knee_joint" axis="0 1 0" range="-0.087267 2.8798" armature="0.02" damping="0.1" frictionloss="0.3"/>
-              <geom class="visual" mesh="og1_left_knee_link_integrated" rgba="0.36 0.5 0.79 1"/>
-              <geom class="collision" mesh="og1_left_knee_link_integrated"/>
+              <geom class="visual" mesh="og1_left_knee_link_ankle" rgba="0.36 0.5 0.79 1"/>
+              <geom class="collision" mesh="og1_left_knee_link_ankle"/>
+              <geom class="visual" mesh="og1_act6512" pos="0.003 0.036 -0.06" quat="0.707107 -0.707107 0 0" rgba="0.88 0.48 0.22 1"/>
+              <geom class="visual" mesh="og1_act6512" pos="0.003 -0.036 -0.135" quat="0.707107 0.707107 0 0" rgba="0.88 0.48 0.22 1"/>
               <body name="left_ankle_pitch_link" pos="0 -9.4445e-05 -0.30001">
-                <inertial pos="-0.007269 0 0.011137" quat="0.603053 0.369225 0.369225 0.603053" mass="0.074" diaginertia="1.89e-05 1.40805e-05 6.9195e-06" />   <!-- G1 foot (not printed yet) -->
-                <joint name="left_ankle_pitch_joint" axis="0 1 0" range="-0.87267 0.5236" armature="0.02" damping="0.1" frictionloss="0.3"/>
+                <inertial pos="-0.007269 0 0.011137" quat="0.603053 0.369225 0.369225 0.603053" mass="0.074" diaginertia="1.89e-05 1.40805e-05 6.9195e-06" />   <!-- G1 ankle pitch link (cross) -->
+                <joint name="left_ankle_pitch_joint" axis="0 1 0" range="-0.87267 0.5236" armature="0.02884" damping="0.1442" frictionloss="0.5095"/>
                 <geom class="visual" mesh="left_ankle_pitch_link" rgba="0.2 0.2 0.2 1"/>
                 <body name="left_ankle_roll_link" pos="0 0 -0.017558">
-                  <inertial pos="0.026505 0 -0.016425" quat="-0.000481092 0.728482 -0.000618967 0.685065" mass="0.608" diaginertia="0.00167218 0.0016161 0.000217621" />   <!-- G1 foot (not printed yet) -->
-                  <joint name="left_ankle_roll_joint" axis="1 0 0" range="-0.2618 0.2618" armature="0.02" damping="0.1" frictionloss="0.3"/>
-                  <geom class="visual" mesh="left_ankle_roll_link" rgba="0.2 0.2 0.2 1"/>
+                  <inertial pos="0.0361178 7.70164e-06 -0.0210373" mass="0.1653" fullinertia="8.07238e-05 0.000540144 0.000575556 -5.57194e-08 2.48541e-05 5.08696e-08"/>   <!-- printed 0.165 kg + 0 built + 0 planned 6512 -->
+                  <joint name="left_ankle_roll_joint" axis="1 0 0" range="-0.2618 0.2618" armature="0.02902" damping="0.1451" frictionloss="0.5111"/>
+                  <geom class="visual" mesh="og1_left_ankle_roll_link_ears" rgba="0.2 0.2 0.2 1"/>
                   <geom size="0.005" pos="-0.05 0.025 -0.03" rgba="0.2 0.2 0.2 1"/>
                   <geom size="0.005" pos="-0.05 -0.025 -0.03" rgba="0.2 0.2 0.2 1"/>
                   <geom size="0.005" pos="0.12 0.03 -0.03" rgba="0.2 0.2 0.2 1"/>
@@ -130,18 +133,20 @@
             <geom class="collision" mesh="og1_right_hip_yaw_link_knee_integrated"/>
             <geom class="visual" mesh="og1_act6512" pos="-0.078273 -0.0175222 -0.17734" quat="0.704405 0.704405 0.0617577 -0.0617577" rgba="0.88 0.48 0.22 1"/>
             <body name="right_knee_link" pos="-0.078273 -0.0021489 -0.17734" quat="0.996179 0 0.0873386 0">
-              <inertial pos="0.00183581 0.00933821 -0.103282" mass="1.2846" fullinertia="0.00419306 0.00425451 0.000688512 2.17493e-05 5.2392e-05 -9.52837e-06"/>   <!-- printed 0.440 kg + 0 built + 2 planned 6512 -->
+              <inertial pos="0.00366502 -0.000955489 -0.106772" mass="1.1487" fullinertia="0.00442225 0.00425805 0.000871871 -2.94835e-06 2.89369e-05 0.000751829"/>   <!-- printed 0.288 kg + 2 built + 0 planned 6512 -->
               <joint name="right_knee_joint" axis="0 1 0" range="-0.087267 2.8798" armature="0.02" damping="0.1" frictionloss="0.3"/>
-              <geom class="visual" mesh="og1_right_knee_link_integrated" rgba="0.36 0.5 0.79 1"/>
-              <geom class="collision" mesh="og1_right_knee_link_integrated"/>
+              <geom class="visual" mesh="og1_right_knee_link_ankle" rgba="0.36 0.5 0.79 1"/>
+              <geom class="collision" mesh="og1_right_knee_link_ankle"/>
+              <geom class="visual" mesh="og1_act6512" pos="0.003 -0.036 -0.06" quat="0.707107 0.707107 0 0" rgba="0.88 0.48 0.22 1"/>
+              <geom class="visual" mesh="og1_act6512" pos="0.003 0.036 -0.135" quat="0.707107 -0.707107 0 0" rgba="0.88 0.48 0.22 1"/>
               <body name="right_ankle_pitch_link" pos="0 9.4445e-05 -0.30001">
-                <inertial pos="-0.007269 0 0.011137" quat="0.603053 0.369225 0.369225 0.603053" mass="0.074" diaginertia="1.89e-05 1.40805e-05 6.9195e-06" />   <!-- G1 foot (not printed yet) -->
-                <joint name="right_ankle_pitch_joint" axis="0 1 0" range="-0.87267 0.5236" armature="0.02" damping="0.1" frictionloss="0.3"/>
+                <inertial pos="-0.007269 0 0.011137" quat="0.603053 0.369225 0.369225 0.603053" mass="0.074" diaginertia="1.89e-05 1.40805e-05 6.9195e-06" />   <!-- G1 ankle pitch link (cross) -->
+                <joint name="right_ankle_pitch_joint" axis="0 1 0" range="-0.87267 0.5236" armature="0.02884" damping="0.1442" frictionloss="0.5095"/>
                 <geom class="visual" mesh="right_ankle_pitch_link" rgba="0.2 0.2 0.2 1"/>
                 <body name="right_ankle_roll_link" pos="0 0 -0.017558">
-                  <inertial pos="0.026505 0 -0.016425" quat="0.000481092 0.728482 0.000618967 0.685065" mass="0.608" diaginertia="0.00167218 0.0016161 0.000217621" />   <!-- G1 foot (not printed yet) -->
-                  <joint name="right_ankle_roll_joint" axis="1 0 0" range="-0.2618 0.2618" armature="0.02" damping="0.1" frictionloss="0.3"/>
-                  <geom class="visual" mesh="right_ankle_roll_link" rgba="0.2 0.2 0.2 1"/>
+                  <inertial pos="0.0361178 -7.70164e-06 -0.0210373" mass="0.1653" fullinertia="8.07238e-05 0.000540144 0.000575556 5.57194e-08 2.48541e-05 -5.08696e-08"/>   <!-- printed 0.165 kg + 0 built + 0 planned 6512 -->
+                  <joint name="right_ankle_roll_joint" axis="1 0 0" range="-0.2618 0.2618" armature="0.02902" damping="0.1451" frictionloss="0.5111"/>
+                  <geom class="visual" mesh="og1_right_ankle_roll_link_ears" rgba="0.2 0.2 0.2 1"/>
                   <geom size="0.005" pos="-0.05 0.025 -0.03" rgba="0.2 0.2 0.2 1"/>
                   <geom size="0.005" pos="-0.05 -0.025 -0.03" rgba="0.2 0.2 0.2 1"/>
                   <geom size="0.005" pos="0.12 0.03 -0.03" rgba="0.2 0.2 0.2 1"/>
@@ -261,6 +266,12 @@
       </body>
     </body>
   </worldbody>
+  <tendon>
+    <fixed name="left_ankle_A"><joint joint="left_ankle_pitch_joint" coef="0.8494"/><joint joint="left_ankle_roll_joint" coef="0.8577"/></fixed>   <!-- crank angle of actuator A -->
+    <fixed name="left_ankle_B"><joint joint="left_ankle_pitch_joint" coef="-0.8489"/><joint joint="left_ankle_roll_joint" coef="0.8458"/></fixed>   <!-- crank angle of actuator B -->
+    <fixed name="right_ankle_A"><joint joint="right_ankle_pitch_joint" coef="0.8494"/><joint joint="right_ankle_roll_joint" coef="-0.8577"/></fixed>   <!-- crank angle of actuator A -->
+    <fixed name="right_ankle_B"><joint joint="right_ankle_pitch_joint" coef="-0.8489"/><joint joint="right_ankle_roll_joint" coef="-0.8458"/></fixed>   <!-- crank angle of actuator B -->
+  </tendon>
   <contact>
     <!-- printed parts nest closely: skip the convex-hull contacts between neighbouring links -->
     <exclude body1="pelvis" body2="waist_yaw_link"/>
@@ -284,15 +295,16 @@
     <motor name="left_hip_roll" joint="left_hip_roll_joint" ctrlrange="-23.1 23.1"/>
     <motor name="left_hip_yaw" joint="left_hip_yaw_joint" ctrlrange="-23.1 23.1"/>
     <motor name="left_knee" joint="left_knee_joint" ctrlrange="-23.1 23.1"/>
-    <motor name="left_ankle_pitch" joint="left_ankle_pitch_joint" ctrlrange="-23.1 23.1"/>
-    <motor name="left_ankle_roll" joint="left_ankle_roll_joint" ctrlrange="-23.1 23.1"/>
     <motor name="right_hip_pitch" joint="right_hip_pitch_joint" ctrlrange="-23.1 23.1"/>
     <motor name="right_hip_roll" joint="right_hip_roll_joint" ctrlrange="-23.1 23.1"/>
     <motor name="right_hip_yaw" joint="right_hip_yaw_joint" ctrlrange="-23.1 23.1"/>
     <motor name="right_knee" joint="right_knee_joint" ctrlrange="-23.1 23.1"/>
-    <motor name="right_ankle_pitch" joint="right_ankle_pitch_joint" ctrlrange="-23.1 23.1"/>
-    <motor name="right_ankle_roll" joint="right_ankle_roll_joint" ctrlrange="-23.1 23.1"/>
     <motor name="waist_yaw" joint="waist_yaw_joint" ctrlrange="-23.1 23.1"/>
+    <!-- ankles: the two shin actuators of each leg, through the crank-and-rod linkage (tendons above) -->
+    <motor name="left_ankle_A" tendon="left_ankle_A" ctrlrange="-23.1 23.1"/>
+    <motor name="left_ankle_B" tendon="left_ankle_B" ctrlrange="-23.1 23.1"/>
+    <motor name="right_ankle_A" tendon="right_ankle_A" ctrlrange="-23.1 23.1"/>
+    <motor name="right_ankle_B" tendon="right_ankle_B" ctrlrange="-23.1 23.1"/>
     <!-- arms: hobby servos as position actuators; kp saturates at ~6 deg error -->
     <position name="left_shoulder_pitch" joint="left_shoulder_pitch_joint" kp="34.30" ctrlrange="-2.5656 2.1468" forcerange="-3.43 3.43"/>   <!-- DS3235 -->
     <position name="left_shoulder_roll" joint="left_shoulder_roll_joint" kp="34.30" ctrlrange="-1.5882 2.2515" forcerange="-3.43 3.43"/>   <!-- DS3235 -->

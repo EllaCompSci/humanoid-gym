@@ -1,4 +1,4 @@
-"""Check the model meshes, and re-fetch the Unitree G1 foot meshes (ankle links) if they are missing.
+"""Check the model meshes, and re-fetch the Unitree G1 ankle pitch link meshes if they are missing.
 
 All meshes ship in assets/mesh; the printed og1_* parts are rebuilt with tools/legs/build_sim_legs.py."""
 from __future__ import annotations

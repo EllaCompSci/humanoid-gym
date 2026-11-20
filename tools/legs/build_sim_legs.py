@@ -15,8 +15,9 @@ Mass model (edit the constants below if you weigh your parts):
   6512 actuator   printed housing/output/motor-shell at the same density
                   + MAD M6C12 150KV motor 257 g + ACT_EXTRA_G (cycloid discs, bearings, pins,
                   encoder, B-G431B-ESC1 driver, screws) lumped at the actuator centre
-Actuators that are not designed yet (hip yaw, two ankle actuators in the shin) are added as mass
-only, at the positions given in PLANNED below, so the sim weighs what the robot will weigh.
+The two ankle actuators sit in the shin (OpenScad/legs/ankle/gen_ankle.py); their frames and the
+linkage map come from ankle_linkage.json. The hip yaw actuator is not designed yet: it is added as
+mass only (PLANNED below), so the sim weighs what the robot will weigh.
 """
 import json
 import struct
@@ -147,14 +148,14 @@ WAIST_ACT = T([0, 0, 2.2])                                # in the pelvis, outpu
 
 # body -> actuator frames that are built (meshes shown) and planned (mass only), left side
 BUILT = {"pelvis": [PEL_L, PEL_R, WAIST_ACT], "hip_pitch_link": [ROLL_ACT], "hip_roll_link": [],
-         "hip_yaw_link": [KNEE_ACT], "knee_link": [], "waist_yaw_link": []}
-PLANNED = {"hip_roll_link": [J_YAW @ Rx(np.pi)],                          # hip yaw, output down onto the yaw link
-           "knee_link": [T([0, 0, -60]) @ AZ_TO_Y, T([0, 0, -125]) @ AZ_TO_Y]}   # two ankle drives in the shin
+         "hip_yaw_link": [KNEE_ACT], "knee_link": [], "waist_yaw_link": [], "ankle_roll_link": []}
+PLANNED = {"hip_roll_link": [J_YAW @ Rx(np.pi)]}                          # hip yaw, output down onto the yaw link
+ANKLE = None   # filled from OpenScad/legs/ankle/ankle_linkage.json (two shin actuators + cranks)
 
 PARTS = {"pelvis": ["pelvis_left_half_waist", "pelvis_right_half_waist", "waist_stator_carrier"],
          "hip_pitch_link": ["{s}_hip_pitch_link_integrated"], "hip_roll_link": ["{s}_hip_roll_link_integrated"],
-         "hip_yaw_link": ["{s}_hip_yaw_link_knee_integrated"], "knee_link": ["{s}_knee_link_integrated"],
-         "waist_yaw_link": ["waist_yaw_link_integrated"]}
+         "hip_yaw_link": ["{s}_hip_yaw_link_knee_integrated"], "knee_link": ["{s}_knee_link_ankle"],
+         "waist_yaw_link": ["waist_yaw_link_integrated"], "ankle_roll_link": ["{s}_ankle_roll_link_ears"]}
 ACT_SHOWN = ["Housing_-_Bambu_-_Housing_Front", "Housing_-_Bambu_-_Housing_Middle", "Housing_-_Bambu_-_Housing_Rear",
              "Output_-_Bambu_-_Output_Shaft_Front", "Output_-_Bambu_-_Output_Shaft_Rear"]
 ACT_PRINTED = ACT_SHOWN + ["Motor_Shell_-_Motor_Shell"]
@@ -176,6 +177,10 @@ def mat_to_posquat(M):
 def main(stl):
     stl = Path(stl)
     legs = stl / "legs"
+    global ANKLE
+    ANKLE = json.load(open(stl.parent / "OpenScad" / "legs" / "ankle" / "ankle_linkage.json"))
+    A, B = np.array(ANKLE["geometry"]["act_A"]), np.array(ANKLE["geometry"]["act_B"])
+    BUILT["knee_link"] = [A, B]
     OUT_MESH.mkdir(parents=True, exist_ok=True)
     report = {}
 
@@ -211,6 +216,9 @@ def main(stl):
             printed_m = sum(i[0] for i in items)
             for M in BUILT[body] + PLANNED.get(body, []):
                 items.append(moved(act, M))
+            if body == "knee_link":                               # ankle cranks (the rods are a few grams)
+                crank = mass_props(load_stl(legs / "ankle_crank.stl"))
+                items += [moved(crank, M) for M in BUILT[body]]
             m, c, I = combine(items)
             out[body] = dict(mass=m / 1000, com=(c / 1000).tolist(), I=(I * 1e-9).tolist(),
                              printed_mass=printed_m / 1000, actuators=len(BUILT[body]),
@@ -227,6 +235,10 @@ def main(stl):
         save_stl(OUT_MESH / "og1_torso_frame.STL", panels / 1000)
         report["torso_frame"] = len(panels)
 
+    g = ANKLE["geometry"]
+    out["ankle_linkage"] = dict(jacobian=ANKLE["jacobian_dphi_dq"], phi0=ANKLE["phi_at_zero_rad"],
+                                rod_mm=ANKLE["rod_length_mm"], crank_mm=g["RC"],
+                                note="left leg; right leg = mirror, so its roll column changes sign")
     json.dump(out, open(OUT_JSON, "w"), indent=1)
     for k, v in report.items():
         print(f"  {k:40s} {v}")

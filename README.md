@@ -20,8 +20,9 @@ The full model uses the G1 joint positions, axes and ranges, with every part swa
 | Legs | The printed hip pitch, hip roll, hip yaw (thigh) and knee (shin) links from `STL/legs`, with the right leg mirrored. Masses and inertias come from the parts plus their 6512 actuators. |
 | Pelvis | The two printed pelvis halves, the waist stator carrier and three 6512s: the two hip pitch actuators and the waist actuator. |
 | Waist | **Yaw only**, as on the 23-DoF G1. One 6512 drives `waist_yaw_joint` about the pelvis z axis. The printed waist yaw link carries the torso. There is no waist roll or pitch. |
-| Leg actuators | All 12 leg joints and the waist yaw are 6512 cycloidal actuators (the Berkeley Humanoid Lite design) under torque control, limited to ±23.1 N·m. See [Actuators](#actuators). |
-| Not designed yet | **Hip yaw and ankle actuators** count in the masses as 6512s: one in each hip roll link and two in each shin, but they are not drawn. The **feet** are still the G1 ankle pitch and roll links, with G1 masses and the 4 G1 contact spheres. |
+| Leg actuators | The hip, knee and waist joints are 6512 cycloidal actuators (the Berkeley Humanoid Lite design) under torque control, limited to ±23.1 N·m. See [Actuators](#actuators). |
+| Ankles | G1-style parallel ankle. Two 6512s in each shin (`*_ankle_A` upper, `*_ankle_B` lower) drive pitch and roll through cranks and push rods. Each pair is modelled as two fixed tendons. The crank angle is J·[pitch, roll], with J = [[0.85, 0.86], [−0.85, 0.85]], linearised from the exact linkage. So a motor torque reaches the ankle joints as Jᵀτ: up to about 39 N·m in pitch or roll. The motor armature and losses are reflected onto the ankle joints. The foot is the printed G1 foot with the rod ears, using the G1 contact spheres. |
+| Not designed yet | The **hip yaw actuator** counts in the hip roll link mass as a 6512 but is not drawn. The ankle pitch link (the cross) keeps the G1 mass. |
 
 ## Install
 
@@ -35,7 +36,7 @@ pip install -e .
 Every mesh both models need is in `src/openG1/assets/mesh/`, so **nothing needs downloading**:
 - The printed parts are the `og1_*.STL` files.
 - The arms, head and hands are the files carried over from the arm work.
-- The feet are the 4 Unitree G1 ankle meshes (BSD-3).
+- The ankle crosses are the 2 Unitree G1 ankle pitch link meshes (BSD-3).
 
 `python -m openG1.meshes` still works if you delete a Unitree file and need to fetch it again.
 
@@ -100,7 +101,8 @@ Both environments run control at 50 Hz (timestep 0.002 s × frame skip 10).
 | Shoulder pitch, shoulder roll | DS3235 (270° version) | 3.43 N·m | 270° |
 | Shoulder yaw, elbow | KST X10 Pro | 1.13 N·m | 160° (check your servo) |
 | Wrist roll, pitch, yaw | TowerPro MG92B | 0.343 N·m | 160° |
-| Hips, knees, ankles, waist yaw | 6512 cycloidal (M6C12 150KV, 15:1) | 23.1 N·m peak | G1 ranges |
+| Hips, knees, waist yaw | 6512 cycloidal (M6C12 150KV, 15:1) | 23.1 N·m peak | G1 ranges |
+| Ankles (2 per leg, via linkage) | 6512 cycloidal | 23.1 N·m per motor, ~39 N·m at the ankle | G1 ranges |
 
 Hobby servos run their own position loop, so they are modelled as `<position>` actuators.
 `kp` is set so the servo reaches full torque at about 6° of error. The armature, damping and
@@ -131,7 +133,7 @@ src/openG1/
   __init__.py               # registers OpenG1-Stand-v0, exposes MODEL_XML
   envs/open_g1_env.py       # full robot: OpenG1-Stand-v0
   envs/upper_body_env.py    # upper body: OpenG1UpperBody-Reach-v0
-  meshes.py                 # check / re-fetch the Unitree foot meshes (python -m openG1.meshes)
+  meshes.py                 # check / re-fetch the Unitree ankle-cross meshes (python -m openG1.meshes)
   assets/open_g1.xml        # full robot MJCF
   assets/open_g1_upper.xml  # upper-body MJCF
   assets/mesh/              # all STL meshes (og1_* = printed legs/pelvis/waist/torso, in metres)
@@ -154,7 +156,7 @@ examples/
 - `tools/mass_properties.json`: torso and arms.
 - `tools/legs_mass.json`: legs, pelvis and waist.
 - `tools/head_mass.json`: head.
-- Unitree's `g1_29dof_with_hand.xml`: joint positions, axes and ranges, and the feet.
+- Unitree's `g1_29dof_with_hand.xml`: joint positions, axes and ranges, the ankle crosses and foot contact spheres.
 
 After you change a printed leg, pelvis, waist or torso part in the hardware repo, rebuild:
 
@@ -191,10 +193,11 @@ Mass assumptions:
   | Hip pitch | 0.59 kg | Roll actuator |
   | Hip roll | 0.84 kg | Planned hip yaw actuator |
   | Thigh | 1.05 kg | Knee actuator |
-  | Shin | 1.29 kg | 2 planned ankle actuators |
+  | Shin | 1.15 kg | 2 ankle actuators + cranks |
+  | Foot | 0.17 kg | Printed foot (G1: 0.61 kg) |
   | Waist yaw link | 0.14 kg | |
 
-  The whole robot is 15.3 kg.
+  The whole robot is 14.1 kg.
 - **Torso:** the framed torso is about 2.03 kg (1.05 kg printed at 1.1 g/cm³ for its 3–4 mm walls, 0.61 kg of 2020, servos, fasteners). Add your compute board, drivers and wiring to its inertial in `tools/mass_properties.json`.
 
 ## Troubleshooting
