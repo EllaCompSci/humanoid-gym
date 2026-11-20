@@ -26,6 +26,8 @@
     <mesh name="right_wrist_pitch_link" file="right_wrist_pitch_link.STL"/>
     <mesh name="right_wrist_yaw_link" file="right_wrist_yaw_link.STL"/>
     <mesh name="right_rubber_hand_open3d" file="right_rubber_hand_open3d.STL"/>
+    <mesh name="og1_torso_frame" file="og1_torso_frame.STL"/>
+    <mesh name="og1_waist_yaw_link_integrated" file="og1_waist_yaw_link_integrated.STL"/>
     <texture type="skybox" builtin="flat" rgb1="0 0 0" rgb2="0 0 0" width="512" height="3072"/>
     <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
     <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
@@ -35,8 +37,9 @@
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane" contype="0" conaffinity="0"/>
     <body name="torso_link" pos="0 0 0.8370000000000001">
       <inertial pos="0.00164748 0.000793798 0.157772" mass="2.0267" fullinertia="0.0187243 0.0149458 0.0100393 -2.95801e-05 0.000276221 -5.29975e-07"/>
-      <geom class="visual" mesh="torso_link_rev_1_0"/>
+      <geom class="visual" mesh="og1_torso_frame" rgba="0.6 0.6 0.63 1"/>
       <geom class="collision" mesh="torso_link_rev_1_0"/>
+      <geom class="visual" mesh="og1_waist_yaw_link_integrated" pos="0.0039635 0 -0.044" rgba="0.62 0.71 0.78 1"/>
       <body name="head_link" pos="0.0039635 0 -0.044">
         <inertial pos="0.0142919 6.83838e-06 0.400164" mass="0.6069" fullinertia="0.00251303 0.00305992 0.00365574 9.39831e-08 -8.82475e-05 2.335e-07"/>   <!-- printed dome + D455 + 2x SG90 -->
         <geom class="visual" mesh="open_g1_dome_head" rgba="0.4 0.4 0.43 1"/>

@@ -1,4 +1,6 @@
-"""Check for / fetch the Unitree meshes that the Open G1 model reuses (legs, pelvis, waist)."""
+"""Check the model meshes, and re-fetch the Unitree G1 foot meshes (ankle links) if they are missing.
+
+All meshes ship in assets/mesh; the printed og1_* parts are rebuilt with tools/legs/build_sim_legs.py."""
 from __future__ import annotations
 
 import shutil
@@ -37,6 +39,11 @@ def check_meshes(xml=None) -> None:
     """Raise a clear error if any mesh the model(s) need is missing."""
     missing = missing_meshes(xml)
     if missing:
+        own = [f for f in missing if f.startswith("og1_")]
+        if own:
+            raise FileNotFoundError(
+                f"printed-part mesh(es) missing from {MESH_DIR}: {', '.join(own)}\n"
+                "Rebuild them with:   python tools/legs/build_sim_legs.py /path/to/humanoid/STL")
         raise FileNotFoundError(
             f"{len(missing)} Unitree G1 mesh file(s) missing from {MESH_DIR}:\n  "
             + "\n  ".join(missing)

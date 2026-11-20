@@ -1,4 +1,4 @@
-"""Generate the Open G1 MJCF (servo arms + printed torso) from the G1 29-DoF model."""
+"""Generate the Open G1 MJCFs (printed legs + waist + framed torso + head + servo arms) on G1 29-DoF kinematics."""
 # usage: python tools/make_mjcf.py path/to/unitree/g1_29dof_with_hand.xml
 import json, numpy as np
 MP=json.load(open(__import__("os").path.join(__import__("os").path.dirname(__file__),"mass_properties.json")))
@@ -49,9 +49,56 @@ def arm(side):
         acts.append(f'    <position name="{side}_{jn}" joint="{side}_{jn}_joint" kp="{kp:.2f}" ctrlrange="{lo:.4f} {hi:.4f}" forcerange="-{sp["tau"]} {sp["tau"]}"/>   <!-- {servo} -->')
     return s+close[::-1], acts
 xml=open("final/_template_head.xml").read() if False else None
-LEGS=open(__import__("sys").argv[1] if len(__import__("sys").argv)>1 else "g1_29dof_with_hand.xml").read()
-legs_block=LEGS[LEGS.index('      <body name="left_hip_pitch_link"'):LEGS.index('      <body name="waist_yaw_link">')]
-legs_block=legs_block.replace('<geom type="mesh" contype="0" conaffinity="0" group="1" density="0"','<geom class="visual"').replace('<geom type="mesh" rgba','<geom class="collision" type="mesh" rgba')
+# ---------------------------------------------------------------- printed legs, pelvis and waist
+# Kinematics (body positions, joint axes and ranges) come from the G1 file; everything printed
+# (meshes, masses, inertias) comes from tools/legs_mass.json + og1_*.STL, made by
+# tools/legs/build_sim_legs.py from the hardware repo's STL/legs and STL/torso_frame.
+import xml.etree.ElementTree as ET
+G1=ET.parse(__import__("sys").argv[1] if len(__import__("sys").argv)>1 else "g1_29dof_with_hand.xml").getroot()
+G1B={b.get("name"):b for b in G1.iter("body")}
+LM=json.load(open(__import__("os").path.join(__import__("os").path.dirname(__file__),"legs_mass.json")))
+# 6512 cycloidal actuator (Berkeley Humanoid Lite design: M6C12 150KV, 15:1 printed cycloidal)
+#   tau   peak joint torque = motor peak 1.71 N.m (MAD data) x 15 x ~0.9 efficiency
+#   arm   reflected rotor inertia ~ 9e-5 kg m2 x 15^2  (estimate - outer-rotor ring, 28 mm radius)
+#   damp, fric  printed-gearbox losses (estimates - identify on your actuator and edit)
+LEG_ACT=dict(tau=23.1,arm=0.02,damp=0.1,fric=0.3)
+LEG_JOINTS=("hip_pitch","hip_roll","hip_yaw","knee","ankle_pitch","ankle_roll")
+OUR_LEG={"hip_pitch_link":"hip_pitch_link_integrated","hip_roll_link":"hip_roll_link_integrated",
+         "hip_yaw_link":"hip_yaw_link_knee_integrated","knee_link":"knee_link_integrated"}
+LEG_RGBA={"hip_pitch_link":"0.83 0.71 0.2 1","hip_roll_link":"0.44 0.68 0.42 1","hip_yaw_link":"0.78 0.77 0.83 1",
+          "knee_link":"0.36 0.5 0.79 1"}
+ACT_RGBA="0.88 0.48 0.22 1"
+def inertial_lm(d,side="left"):
+    c=np.array(d["com"]); I=np.array(d["I"])
+    if side=="right": c[1]*=-1; I[0,1]*=-1; I[1,0]*=-1; I[1,2]*=-1; I[2,1]*=-1
+    return f'<inertial pos="{f(c)}" mass="{d["mass"]:.4f}" fullinertia="{f([I[0,0],I[1,1],I[2,2],I[0,1],I[0,2],I[1,2]])}"/>'
+def act_geoms(geoms,ind):
+    return [f'{ind}<geom class="visual" mesh="og1_act6512" pos="{f(p)}" quat="{f(q)}" rgba="{ACT_RGBA}"/>' for p,q in geoms]
+def leg(side):
+    s=[]; close=[]; ind="      "
+    for jn in LEG_JOINTS:
+        link=f"{jn}_link"; b=G1B[f"{side}_{link}"]; j=b.find("joint")
+        quat=f' quat="{b.get("quat")}"' if b.get("quat") else ""
+        s.append(f'{ind}<body name="{side}_{link}" pos="{b.get("pos")}"{quat}>')
+        if link in OUR_LEG:
+            d=LM[link]; s.append(f'{ind}  {inertial_lm(d,side)}   <!-- printed {d["printed_mass"]:.3f} kg + {d["actuators"]} built + {d["planned_actuators"]} planned 6512 -->')
+        else:
+            s.append(f'{ind}  {ET.tostring(b.find("inertial"),encoding="unicode").strip()}   <!-- G1 foot (not printed yet) -->')
+        s.append(f'{ind}  <joint name="{side}_{jn}_joint" axis="{j.get("axis")}" range="{j.get("range")}" armature="{LEG_ACT["arm"]}" damping="{LEG_ACT["damp"]}" frictionloss="{LEG_ACT["fric"]}"/>')
+        if link in OUR_LEG:
+            m=f"og1_{side}_{OUR_LEG[link]}"
+            s.append(f'{ind}  <geom class="visual" mesh="{m}" rgba="{LEG_RGBA[link]}"/>')
+            if link!="hip_roll_link": s.append(f'{ind}  <geom class="collision" mesh="{m}"/>')
+            s+=act_geoms(LM[link]["act_geoms" if side=="left" else "act_geoms_right"] or [],ind+"  ")
+        else:
+            s.append(f'{ind}  <geom class="visual" mesh="{side}_{link}" rgba="0.2 0.2 0.2 1"/>')
+            if jn=="ankle_roll":
+                for g in b.findall("geom"):
+                    if g.get("type") is None and g.get("size"):      # G1 foot contact spheres
+                        s.append(f'{ind}  <geom size="{g.get("size")}" pos="{g.get("pos")}" rgba="0.2 0.2 0.2 1"/>')
+        close.append(f"{ind}</body>"); ind+="  "
+    return "\n".join(s+close[::-1])
+legs_block=leg("left")+"\n"+leg("right")+"\n"
 aL,actL=arm("left"); aR,actR=arm("right")
 t=MP["torso_link"]; I=np.array(t["I"])
 HM=json.load(open(__import__("os").path.join(__import__("os").path.dirname(__file__),"head_mass.json")))
@@ -65,14 +112,24 @@ def head(ind):
        f'  <camera name="head_d455" pos="0.095 0 0.402" xyaxes="0 -1 0 0 0 1" fovy="58"/>   <!-- D455 glass, looking along +x -->',
        f'</body>']
     return "\n".join(ind+l for l in L)
-leg_meshes=["pelvis","pelvis_contour_link"]+[f"{s}_{l}" for s in ("left","right") for l in ("hip_pitch_link","hip_roll_link","hip_yaw_link","knee_link","ankle_pitch_link","ankle_roll_link")]+["waist_yaw_link","waist_roll_link"]
+leg_meshes=[f"{s}_{l}" for s in ("left","right") for l in ("ankle_pitch_link","ankle_roll_link")]   # Unitree G1 feet
+og1=["og1_act6512","og1_pelvis_left_half_waist","og1_pelvis_right_half_waist","og1_waist_stator_carrier",
+     "og1_waist_yaw_link_integrated","og1_torso_frame"]+[f"og1_{s}_{p}" for s in ("left","right") for p in OUR_LEG.values()]
 ours=["torso_link_rev_1_0","open_g1_dome_head"]+[f"{s}_{l}" for s in ("left","right") for l in ("shoulder_pitch_link","shoulder_roll_link","shoulder_yaw_link","elbow_link","wrist_roll_link","wrist_pitch_link","wrist_yaw_link","rubber_hand_open3d")]
+EXCL=[("pelvis","waist_yaw_link"),("pelvis","torso_link")]+[p for sd in ("left","right") for p in [
+    ("pelvis",f"{sd}_hip_roll_link"),("pelvis",f"{sd}_hip_yaw_link"),(f"{sd}_hip_pitch_link",f"{sd}_hip_yaw_link"),
+    (f"{sd}_hip_roll_link",f"{sd}_knee_link"),(f"{sd}_hip_yaw_link",f"{sd}_ankle_pitch_link"),
+    (f"{sd}_knee_link",f"{sd}_ankle_roll_link")]]
+CONTACT_EXCLUDES=chr(10).join(f'    <exclude body1="{a}" body2="{b}"/>' for a,b in EXCL)
 X=f'''<mujoco model="open_g1">
   <!-- Open G1: 3D-printed Unitree-G1-shaped humanoid (github.com/open3dhumanoid/humanoid)
-       * legs / pelvis / waist: Unitree G1 29-DoF kinematics, G1 inertias and torque limits
-         -> TODO: replace with your Berkeley-style printed leg actuators (torque, armature, masses)
+       * legs / pelvis / waist: printed parts (STL/legs) on G1 kinematics, 6512 cycloidal actuators
+         (Berkeley Humanoid Lite design) on every leg joint and the waist yaw, 23-DoF-style yaw-only waist.
+         Hip yaw and ankle actuators are not designed yet: they are in the masses as 6512s, the feet
+         are the Unitree G1 ankle links. Masses from tools/legs/build_sim_legs.py.
        * head: printed dome head (head.scad) with a RealSense D455; camera 'head_d455'
-       * torso: torso_link_rev_1_0, printed (rev 1.0 shoulder height 0.24778 m), 2x DS3235 shoulder servos
+       * torso: 2020-aluminium frame with printed panels (STL/torso_frame), G1 rev 1.0 shape; collision uses
+         the G1 rev 1.0 shell (same outside); 2x DS3235 shoulder servos
        * arms: 7-DoF, hobby servos (DS3235 / KST X10 Pro / MG92B), printed-part masses and inertias
          computed from the CAD at 0.56 g/cm3 (PLA ~45 % solid) + servo masses
        * hand: rubber hand fixed to the wrist yaw link
@@ -85,7 +142,8 @@ X=f'''<mujoco model="open_g1">
     <default class="collision"><geom type="mesh" group="3" rgba="0.7 0.7 0.7 1"/></default>
   </default>
   <asset>
-{chr(10).join(f'    <mesh name="{m}" file="{m}.STL"/>   <!-- copy from unitree g1_description/meshes -->' for m in leg_meshes)}
+{chr(10).join(f'    <mesh name="{m}" file="{m}.STL"/>   <!-- Unitree g1_description (BSD-3) -->' for m in leg_meshes)}
+{chr(10).join(f'    <mesh name="{m}" file="{m}.STL"/>' for m in og1)}
 {chr(10).join(f'    <mesh name="{m}" file="{m}.STL"/>' for m in ours)}
     <texture type="skybox" builtin="flat" rgb1="0 0 0" rgb2="0 0 0" width="512" height="3072"/>
     <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
@@ -95,37 +153,38 @@ X=f'''<mujoco model="open_g1">
     <light pos="1 0 3.5" dir="0 0 -1" directional="true"/>
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
     <body name="pelvis" pos="0 0 0.793">
-      <inertial pos="0 0 -0.07605" quat="1 0 -0.000399148 0" mass="3.813" diaginertia="0.010549 0.0093089 0.0079184"/>
+      {inertial_lm(LM["pelvis"])}   <!-- printed halves + stator carrier + 3x 6512 -->
       <freejoint name="floating_base_joint"/>
-      <geom class="visual" rgba="0.2 0.2 0.2 1" mesh="pelvis"/>
-      <geom class="visual" mesh="pelvis_contour_link"/>
-      <geom class="collision" mesh="pelvis_contour_link"/>
+      <geom class="visual" mesh="og1_pelvis_left_half_waist" rgba="0.72 0.72 0.72 1"/>
+      <geom class="visual" mesh="og1_pelvis_right_half_waist" rgba="0.56 0.61 0.69 1"/>
+      <geom class="visual" mesh="og1_waist_stator_carrier" rgba="0.88 0.75 0.38 1"/>
+      <geom class="collision" mesh="og1_pelvis_left_half_waist"/>
+      <geom class="collision" mesh="og1_pelvis_right_half_waist"/>
+{chr(10).join(act_geoms(LM["pelvis"]["act_geoms"],"      "))}
       <site name="imu_in_pelvis" size="0.01" pos="0.04525 0 -0.08339"/>
 {legs_block}      <body name="waist_yaw_link">
-        <inertial pos="0.003964 0 0.018769" quat="-0.0178291 0.628464 0.0282471 0.777121" mass="0.244" diaginertia="0.000158561 0.000124229 9.67669e-05"/>
-        <joint name="waist_yaw_joint" axis="0 0 1" range="-2.618 2.618"/>
-        <geom class="visual" mesh="waist_yaw_link"/>
-        <body name="waist_roll_link" pos="-0.0039635 0 0.044">
-          <inertial pos="0 -0.000236 0.010111" quat="0.99979 0.020492 0 0" mass="0.047" diaginertia="7.515e-06 6.40206e-06 3.98394e-06"/>
-          <joint name="waist_roll_joint" axis="1 0 0" range="-0.52 0.52"/>
-          <geom class="visual" mesh="waist_roll_link"/>
-          <body name="torso_link">
+        {inertial_lm(LM["waist_yaw_link"])}
+        <joint name="waist_yaw_joint" axis="0 0 1" range="-2.618 2.618" armature="{LEG_ACT["arm"]}" damping="{LEG_ACT["damp"]}" frictionloss="{LEG_ACT["fric"]}"/>
+        <geom class="visual" mesh="og1_waist_yaw_link_integrated" rgba="0.62 0.71 0.78 1"/>
+        <body name="torso_link" pos="-0.0039635 0 0.044">
             <inertial pos="{f(t["com"])}" mass="{t["mass"]:.4f}" fullinertia="{f([I[0,0],I[1,1],I[2,2],I[0,1],I[0,2],I[1,2]])}"/>
-            <joint name="waist_pitch_joint" axis="0 1 0" range="-0.52 0.52"/>
-            <geom class="visual" mesh="torso_link_rev_1_0"/>
+            <geom class="visual" mesh="og1_torso_frame" rgba="0.6 0.6 0.63 1"/>
             <geom class="collision" mesh="torso_link_rev_1_0"/>
 {head("            ")}
             <site name="imu_in_torso" size="0.01" pos="-0.03959 -0.00224 0.14792"/>
 {chr(10).join("    "+l for l in aL)}
 {chr(10).join("    "+l for l in aR)}
-          </body>
         </body>
       </body>
     </body>
   </worldbody>
+  <contact>
+    <!-- printed parts nest closely: skip the convex-hull contacts between neighbouring links -->
+{CONTACT_EXCLUDES}
+  </contact>
   <actuator>
-    <!-- legs + waist: G1 torque limits (TODO: your leg actuators) -->
-{chr(10).join(f'    <motor name="{j}" joint="{j}_joint" ctrlrange="-{tq} {tq}"/>' for j,tq in [(f"{s}_{n}",tq) for s in ("left","right") for n,tq in (("hip_pitch",88),("hip_roll",88),("hip_yaw",88),("knee",139),("ankle_pitch",50),("ankle_roll",50))]+[("waist_yaw",88),("waist_roll",50),("waist_pitch",50)])}
+    <!-- legs + waist yaw: 6512 cycloidal actuators, torque control, peak {LEG_ACT["tau"]} N.m -->
+{chr(10).join(f'    <motor name="{j}" joint="{j}_joint" ctrlrange="-{LEG_ACT["tau"]} {LEG_ACT["tau"]}"/>' for j in [f"{s}_{n}" for s in ("left","right") for n in LEG_JOINTS]+["waist_yaw"])}
     <!-- arms: hobby servos as position actuators; kp saturates at ~6 deg error -->
 {chr(10).join(actL)}
 {chr(10).join(actR)}
@@ -156,7 +215,7 @@ U=f'''<mujoco model="open_g1_upper">
     <default class="collision"><geom type="mesh" group="3" rgba="0.7 0.7 0.7 1"/></default>
   </default>
   <asset>
-{chr(10).join(f'    <mesh name="{m}" file="{m}.STL"/>' for m in ours)}
+{chr(10).join(f'    <mesh name="{m}" file="{m}.STL"/>' for m in ours+["og1_torso_frame","og1_waist_yaw_link_integrated"])}
     <texture type="skybox" builtin="flat" rgb1="0 0 0" rgb2="0 0 0" width="512" height="3072"/>
     <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
     <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
@@ -166,8 +225,9 @@ U=f'''<mujoco model="open_g1_upper">
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane" contype="0" conaffinity="0"/>
     <body name="torso_link" pos="0 0 {TORSO_Z}">
       <inertial pos="{f(t["com"])}" mass="{t["mass"]:.4f}" fullinertia="{f([I[0,0],I[1,1],I[2,2],I[0,1],I[0,2],I[1,2]])}"/>
-      <geom class="visual" mesh="torso_link_rev_1_0"/>
+      <geom class="visual" mesh="og1_torso_frame" rgba="0.6 0.6 0.63 1"/>
       <geom class="collision" mesh="torso_link_rev_1_0"/>
+      <geom class="visual" mesh="og1_waist_yaw_link_integrated" pos="0.0039635 0 -0.044" rgba="0.62 0.71 0.78 1"/>
 {head("      ")}
       <site name="imu_in_torso" size="0.01" pos="-0.03959 -0.00224 0.14792"/>
 {chr(10).join(l[4:] for l in aL)}

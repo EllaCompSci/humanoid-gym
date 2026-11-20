@@ -8,16 +8,20 @@ There are two models:
 - `open_g1.xml`: the full robot, with floating base, legs, waist, torso, head and arms.
 - `open_g1_upper.xml`: the **upper body only**. The torso is fixed to the world and carries the head and both 7-DoF arms.
 
-The full model is the G1 29-DoF MJCF, changed to match the printed robot:
+The full model uses the G1 joint positions, axes and ranges, with every part swapped for the printed robot:
 
 | Part | Change from the G1 model |
 |---|---|
-| Torso | `torso_link_rev_1_0` shape (rev 1.0, shoulders at z = 0.24778 m). Mass and inertia are for the **framed torso**: 2020 aluminium frame, printed panels and shoulder blocks, 2 shoulder servos, fasteners (2.03 kg, no electronics). |
+| Torso | The **framed torso**: 2020 aluminium frame with printed panels, trays and shoulder blocks (`og1_torso_frame.STL`, from `STL/torso_frame`). It has the G1 rev 1.0 outside shape (shoulders at z = 0.24778 m), so collisions use the rev 1.0 shell. Mass 2.03 kg: frame, panels, 2 shoulder servos and fasteners, no electronics. |
 | Arms | 7-DoF on hobby servos. Masses and inertias are computed from the printed CAD plus servo masses. The servo joints use **position actuators** with servo torque limits and armature, damping and friction values. |
 | Joint ranges | The G1 range clipped to the servo's travel, centred on the middle of the G1 range. Fit each servo horn at that centre angle. |
 | Head | The printed dome head (`head.scad`) with a RealSense D455, as `open_g1_dome_head.STL`. It is a fixed `head_link` body with its own mass (0.61 kg: printed parts, D455 and 2 brow servos) and a `head_d455` camera at the camera glass. |
 | Hand | The rubber hand, fixed to the wrist yaw link (`*_rubber_hand_open3d.STL`). |
-| Legs / pelvis / waist | Still the G1 values (kinematics, inertias, torque limits). **TODO:** replace with your measured printed leg actuators. |
+| Legs | The printed hip pitch, hip roll, hip yaw (thigh) and knee (shin) links from `STL/legs`, with the right leg mirrored. Masses and inertias come from the parts plus their 6512 actuators. |
+| Pelvis | The two printed pelvis halves, the waist stator carrier and three 6512s: the two hip pitch actuators and the waist actuator. |
+| Waist | **Yaw only**, as on the 23-DoF G1. One 6512 drives `waist_yaw_joint` about the pelvis z axis. The printed waist yaw link carries the torso. There is no waist roll or pitch. |
+| Leg actuators | All 12 leg joints and the waist yaw are 6512 cycloidal actuators (the Berkeley Humanoid Lite design) under torque control, limited to ±23.1 N·m. See [Actuators](#actuators). |
+| Not designed yet | **Hip yaw and ankle actuators** count in the masses as 6512s: one in each hip roll link and two in each shin, but they are not drawn. The **feet** are still the G1 ankle pitch and roll links, with G1 masses and the 4 G1 contact spheres. |
 
 ## Install
 
@@ -27,23 +31,13 @@ cd humanoid-gym
 pip install -e .
 ```
 
-### Meshes you need to add
-The arm, torso, head and hand meshes are included in `src/openG1/assets/mesh/`, so the
-**upper-body model needs no downloads**. The full model also needs 16 leg, pelvis and waist
-meshes, which are Unitree's own. Fetch them once:
+### Meshes
+Every mesh both models need is in `src/openG1/assets/mesh/`, so **nothing needs downloading**:
+- The printed parts are the `og1_*.STL` files.
+- The arms, head and hands are the files carried over from the arm work.
+- The feet are the 4 Unitree G1 ankle meshes (BSD-3).
 
-```bash
-python -m openG1.meshes                       # downloads from Unitree's GitHub
-python -m openG1.meshes --from /path/to/g1_description/meshes   # or copy from a local folder
-```
-
-These are the files it needs:
-
-```
-pelvis.STL  pelvis_contour_link.STL  waist_yaw_link.STL  waist_roll_link.STL
-{left,right}_hip_pitch_link.STL  {left,right}_hip_roll_link.STL  {left,right}_hip_yaw_link.STL
-{left,right}_knee_link.STL  {left,right}_ankle_pitch_link.STL  {left,right}_ankle_roll_link.STL
-```
+`python -m openG1.meshes` still works if you delete a Unitree file and need to fetch it again.
 
 ### Head camera
 Both models have a `head_d455` camera at the D455 glass, looking forward (58° vertical field of view):
@@ -85,7 +79,7 @@ python examples/upper_body_reach.py
 
 | ID | Task | Action | Observation |
 |---|---|---|---|
-| `OpenG1-Stand-v0` | Stay upright | 29 values in [-1, 1], scaled to each actuator's `ctrlrange` (torque for legs and waist, target angle for arm servos) | `qpos[2:]` + `qvel` |
+| `OpenG1-Stand-v0` | Stay upright | 27 values in [-1, 1], scaled to each actuator's `ctrlrange` (torque for legs and waist, target angle for arm servos) | `qpos[2:]` + `qvel` |
 | `OpenG1UpperBody-Reach-v0` | Upper body only: touch a random target with each hand (green = left, red = right) | 14 servo targets in [-1, 1] | `qpos`, `qvel`, hand positions, target positions, target − hand |
 
 **Stand:** the reward is a healthy bonus, plus how upright the torso is, minus a control cost. An
@@ -106,11 +100,29 @@ Both environments run control at 50 Hz (timestep 0.002 s × frame skip 10).
 | Shoulder pitch, shoulder roll | DS3235 (270° version) | 3.43 N·m | 270° |
 | Shoulder yaw, elbow | KST X10 Pro | 1.13 N·m | 160° (check your servo) |
 | Wrist roll, pitch, yaw | TowerPro MG92B | 0.343 N·m | 160° |
-| Hips, knees, ankles, waist | G1 values (placeholder) | 50–139 N·m | G1 |
+| Hips, knees, ankles, waist yaw | 6512 cycloidal (M6C12 150KV, 15:1) | 23.1 N·m peak | G1 ranges |
 
 Hobby servos run their own position loop, so they are modelled as `<position>` actuators.
 `kp` is set so the servo reaches full torque at about 6° of error. The armature, damping and
 friction values are estimates for geared hobby servos; tune them against your hardware.
+
+The 6512s are `<motor>` actuators (torque control, as on the real B-G431B-ESC1 drivers).
+Their values are set in `LEG_ACT` at the top of `tools/make_mjcf.py`:
+
+| Value | Setting | Source |
+|---|---|---|
+| Peak torque | 23.1 N·m | MAD M6C12 peak 1.71 N·m × 15 × 0.9 efficiency |
+| Armature | 0.02 kg·m² | Rotor about 9e-5 kg·m² × 15². Estimate. |
+| Damping | 0.1 N·m·s/rad | Estimate. |
+| Friction loss | 0.3 N·m | Estimate. |
+
+All four are estimates or derived values, so identify them on a real actuator and edit `LEG_ACT`.
+
+The 6512 is a lot weaker than the G1's 88–139 N·m joints. Before training, check that your
+policy can hold a crouch: the knee torque in a deep squat is what usually runs out first.
+
+MuJoCo motors have no speed limit. The motor is 150 KV at 24 V, about 25 rad/s at the joint with
+no load, so add a speed penalty or limit if your policy needs one.
 
 ## Layout
 
@@ -119,12 +131,15 @@ src/openG1/
   __init__.py               # registers OpenG1-Stand-v0, exposes MODEL_XML
   envs/open_g1_env.py       # full robot: OpenG1-Stand-v0
   envs/upper_body_env.py    # upper body: OpenG1UpperBody-Reach-v0
-  meshes.py                 # check / fetch the Unitree meshes (python -m openG1.meshes)
+  meshes.py                 # check / re-fetch the Unitree foot meshes (python -m openG1.meshes)
   assets/open_g1.xml        # full robot MJCF
   assets/open_g1_upper.xml  # upper-body MJCF
-  assets/mesh/              # STL meshes (arm/torso/head/hand included; legs from Unitree)
+  assets/mesh/              # all STL meshes (og1_* = printed legs/pelvis/waist/torso, in metres)
 tools/
-  make_mjcf.py              # regenerates open_g1.xml
+  make_mjcf.py              # regenerates open_g1.xml and open_g1_upper.xml
+  legs/build_sim_legs.py    # hardware STL/ -> og1_*.STL sim meshes + legs_mass.json
+  legs_mass.json            # leg / pelvis / waist masses, COMs, inertias, actuator placements
+  check_model.py            # static checks without MuJoCo: foot height, mass, hull overlaps
   mass_properties.json      # printed-link masses / COMs / inertias
   head_mass.json            # dome head mass / COM / inertia
   head/export_head.py       # head.scad -> open_g1_dome_head.STL + head_mass.json
@@ -135,12 +150,22 @@ examples/
 ```
 
 ## Regenerating the model
-`open_g1.xml` and `open_g1_upper.xml` are both generated by `tools/make_mjcf.py`. It reads `tools/mass_properties.json`, which
-was computed from the hardware CAD, and takes the legs from Unitree's `g1_29dof_with_hand.xml`:
+`open_g1.xml` and `open_g1_upper.xml` are both generated by `tools/make_mjcf.py`. Its inputs:
+- `tools/mass_properties.json`: torso and arms.
+- `tools/legs_mass.json`: legs, pelvis and waist.
+- `tools/head_mass.json`: head.
+- Unitree's `g1_29dof_with_hand.xml`: joint positions, axes and ranges, and the feet.
+
+After you change a printed leg, pelvis, waist or torso part in the hardware repo, rebuild:
 
 ```bash
+python tools/legs/build_sim_legs.py path/to/humanoid/STL     # meshes + legs_mass.json
 python tools/make_mjcf.py path/to/g1_29dof_with_hand.xml
+python tools/check_model.py                                   # foot height, mass, overlaps
 ```
+
+`build_sim_legs.py` cuts each sim mesh to 60k faces or fewer with vertex clustering, well under
+MuJoCo's 200k limit. It gets masses by integrating the closed STLs.
 
 Edit the `SERVO` table in the script to change the torque, travel or armature values.
 Regenerate after you change servos, print density or parts.
@@ -157,6 +182,19 @@ Mass assumptions:
 - **Print density:** PLA at about 45% solid, i.e. 0.56 g/cm³.
 - **Servos:** DS3235 60 g, X10 Pro 25 g, MG92B 13.8 g.
 - **Head:** D455 116 g (datasheet), SG90 9 g each.
+- **6512 actuator:** 0.42 kg. That is the printed housing at 0.56 g/cm³, the 257 g M6C12 motor, and 120 g for the cycloid discs, bearings, encoder, driver and screws (`ACT_EXTRA_G`, an estimate; weigh one and edit it).
+- **Leg links:**
+
+  | Link | Mass | Includes |
+  |---|---|---|
+  | Pelvis | 1.71 kg | 3 actuators |
+  | Hip pitch | 0.59 kg | Roll actuator |
+  | Hip roll | 0.84 kg | Planned hip yaw actuator |
+  | Thigh | 1.05 kg | Knee actuator |
+  | Shin | 1.29 kg | 2 planned ankle actuators |
+  | Waist yaw link | 0.14 kg | |
+
+  The whole robot is 15.3 kg.
 - **Torso:** the framed torso is about 2.03 kg (1.05 kg printed at 1.1 g/cm³ for its 3–4 mm walls, 0.61 kg of 2020, servos, fasteners). Add your compute board, drivers and wiring to its inertial in `tools/mass_properties.json`.
 
 ## Troubleshooting
@@ -173,6 +211,7 @@ fix_snap_env(reexec=True)
 Or run from a normal terminal, or install VS Code from the `.deb` instead of the snap.
 
 ## Credits
-Kinematics and meshes are derived from the Unitree G1 description
-([unitree_ros](https://github.com/unitreerobotics/unitree_ros)). Check Unitree's licence before
-you redistribute their meshes.
+Kinematics, the arm/torso/head reference shapes and the foot meshes come from the Unitree G1 description
+([unitree_ros](https://github.com/unitreerobotics/unitree_ros), BSD-3).
+The 6512 actuator is the Berkeley Humanoid Lite design
+([HybridRobotics/Berkeley-Humanoid-Lite](https://github.com/HybridRobotics/Berkeley-Humanoid-Lite)).

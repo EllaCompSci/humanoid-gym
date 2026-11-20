@@ -40,7 +40,7 @@ class OpenG1StandEnv(MujocoEnv, utils.EzPickle):
         self._reset_noise_scale = reset_noise_scale
 
         if xml_file == DEFAULT_XML:
-            check_meshes()              # clear message if the Unitree leg meshes are missing
+            check_meshes()              # clear message if a mesh is missing
         MujocoEnv.__init__(self, xml_file, frame_skip, observation_space=None,
                            default_camera_config=DEFAULT_CAMERA, **kwargs)
         self.metadata["render_fps"] = int(np.round(1.0 / self.dt))
