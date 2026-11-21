@@ -3,13 +3,15 @@
 import json, numpy as np
 MP=json.load(open(__import__("os").path.join(__import__("os").path.dirname(__file__),"mass_properties.json")))
 # hobby servo specs (stall torque N.m, travel deg, armature, damping, frictionloss)
-SERVO={"DS3235":dict(tau=3.43,travel=270,arm=0.005,damp=0.15,fric=0.03),   # DS3235-270 version
-       "X10PRO":dict(tau=1.13,travel=160,arm=0.002,damp=0.06,fric=0.01),   # CHECK travel for your X10 Pro
-       "MG92B": dict(tau=0.343,travel=160,arm=0.0006,damp=0.02,fric=0.005)}
+SERVO={"DS3235":dict(tau=3.43,travel=270,arm=0.005,damp=0.15,fric=0.03),   # 40x20 standard, DS3235-270 version
+       "MICRO5":dict(tau=0.49,travel=180,arm=0.0008,damp=0.025,fric=0.006),# 23x12 metal-gear micro, >= 5 kg.cm (shoulder yaw)
+       "MG92B": dict(tau=0.343,travel=160,arm=0.0006,damp=0.02,fric=0.005)}# 23x12 micro, MG92B / MG90S
+# arm bodies: meshes og1_{side}_{link}.STL and masses tools/arm_mass.json, both from tools/arms/build_sim_arms.py
+AM=json.load(open(__import__("os").path.join(__import__("os").path.dirname(__file__),"arm_mass.json")))
 ARM=[("shoulder_pitch","shoulder_pitch_link","DS3235",(0,1,0),(-3.0892,2.6704),(-3.0892,2.6704)),
      ("shoulder_roll","shoulder_roll_link","DS3235",(1,0,0),(-1.5882,2.2515),(-2.2515,1.5882)),
-     ("shoulder_yaw","shoulder_yaw_link","X10PRO",(0,0,1),(-2.618,2.618),(-2.618,2.618)),
-     ("elbow","elbow_link","X10PRO",(0,1,0),(-1.0472,2.0944),(-1.0472,2.0944)),
+     ("shoulder_yaw","shoulder_yaw_link","MICRO5",(0,0,1),(-2.618,2.618),(-2.618,2.618)),
+     ("elbow","elbow_link","DS3235",(0,1,0),(-1.0472,2.0944),(-1.0472,2.0944)),
      ("wrist_roll","wrist_roll_link","MG92B",(1,0,0),(-1.972222054,1.972222054),(-1.972222054,1.972222054)),
      ("wrist_pitch","wrist_pitch_link","MG92B",(0,1,0),(-1.614429558,1.614429558),(-1.614429558,1.614429558)),
      ("wrist_yaw","wrist_yaw_link","MG92B",(0,0,1),(-1.614429558,1.614429558),(-1.614429558,1.614429558))]
@@ -24,6 +26,9 @@ def inertial(link,side):
     d=MP[link]; c=np.array(d["com"]); I=np.array(d["I"])
     if side=="right": c[1]*=-1; I[0,1]*=-1; I[1,0]*=-1; I[1,2]*=-1; I[2,1]*=-1
     return f'<inertial pos="{f(c)}" mass="{d["mass"]:.5f}" fullinertia="{f([I[0,0],I[1,1],I[2,2],I[0,1],I[0,2],I[1,2]])}"/>'
+def inertial_arm(link,side):
+    d=AM[f"{side}_{link}"]; c=np.array(d["com"]); I=np.array(d["I"])
+    return f'<inertial pos="{f(c)}" mass="{d["mass"]:.5f}" fullinertia="{f([I[0,0],I[1,1],I[2,2],I[0,1],I[0,2],I[1,2]])}"/>'
 def joint_range(lim,servo):
     lo,hi=lim; half=np.radians(SERVO[servo]["travel"])/2
     if hi-lo<=2*half: return lo,hi
@@ -34,12 +39,12 @@ def arm(side):
         pos,quat=P[jn]; lo,hi=joint_range(limL if side=="left" else limR,servo); sp=SERVO[servo]
         q=f' quat="{quat}"' if quat else ""
         s.append(f'{ind}<body name="{side}_{link}" pos="{pos}"{q}>')
-        s.append(f'{ind}  {inertial(link,side)}')
+        s.append(f'{ind}  {inertial_arm(link,side)}')
         s.append(f'{ind}  <joint name="{side}_{jn}_joint" axis="{f(axis)}" range="{lo:.4f} {hi:.4f}" armature="{sp["arm"]}" damping="{sp["damp"]}" frictionloss="{sp["fric"]}"/>')
-        s.append(f'{ind}  <geom class="visual" mesh="{side}_{link}"/>')
+        s.append(f'{ind}  <geom class="visual" mesh="og1_{side}_{link}"/>')
         if jn in ("shoulder_pitch",): s.append(f'{ind}  <geom class="collision" type="cylinder" size="0.03 0.025" pos="0 {0.04 if side=="left" else -0.04} -0.01" quat="0.707107 0 0.707107 0"/>')
         elif jn=="shoulder_roll": s.append(f'{ind}  <geom class="collision" type="cylinder" size="0.03 0.015" pos="-0.004 {0.006 if side=="left" else -0.006} -0.053"/>')
-        else: s.append(f'{ind}  <geom class="collision" mesh="{side}_{link}"/>')
+        else: s.append(f'{ind}  <geom class="collision" mesh="og1_{side}_{link}"/>')
         if jn=="wrist_yaw":
             s.append(f'{ind}  <geom class="visual" mesh="{side}_rubber_hand_open3d"/>')
             s.append(f'{ind}  <geom class="collision" mesh="{side}_rubber_hand_open3d"/>')
@@ -63,8 +68,8 @@ LM=json.load(open(__import__("os").path.join(__import__("os").path.dirname(__fil
 #   damp, fric  printed-gearbox losses (estimates - identify on your actuator and edit)
 LEG_ACT=dict(tau=23.1,arm=0.02,damp=0.1,fric=0.3)
 LEG_JOINTS=("hip_pitch","hip_roll","hip_yaw","knee","ankle_pitch","ankle_roll")
-OUR_LEG={"hip_pitch_link":"hip_pitch_link_integrated","hip_roll_link":"hip_roll_link_integrated",
-         "hip_yaw_link":"hip_yaw_link_knee_integrated","knee_link":"knee_link_ankle","ankle_roll_link":"ankle_roll_link_ears"}
+OUR_LEG={"hip_pitch_link":"hip_pitch_link_integrated","hip_roll_link":"hip_roll_link_integrated_yaw",
+         "hip_yaw_link":"hip_yaw_link_knee_integrated_yaw","knee_link":"knee_link_ankle","ankle_roll_link":"ankle_roll_link_ears"}
 # ankle: two 6512s in the shin (A upper, B lower) drive pitch + roll through cranks and push rods.
 # Modelled as fixed tendons: crank angle_i = J[i] . [pitch, roll] (linearised at zero, from the
 # exact linkage in OpenScad/legs/ankle/gen_ankle.py), so motor torque maps to J^T tau at the joints.
@@ -123,7 +128,8 @@ def head(ind):
 leg_meshes=[f"{s}_ankle_pitch_link" for s in ("left","right")]   # Unitree G1 ankle cross
 og1=["og1_act6512","og1_pelvis_left_half_waist","og1_pelvis_right_half_waist","og1_waist_stator_carrier",
      "og1_waist_yaw_link_integrated","og1_torso_frame"]+[f"og1_{s}_{p}" for s in ("left","right") for p in OUR_LEG.values()]
-ours=["torso_link_rev_1_0","open_g1_dome_head"]+[f"{s}_{l}" for s in ("left","right") for l in ("shoulder_pitch_link","shoulder_roll_link","shoulder_yaw_link","elbow_link","wrist_roll_link","wrist_pitch_link","wrist_yaw_link","rubber_hand_open3d")]
+ARM_LINKS=("shoulder_pitch_link","shoulder_roll_link","shoulder_yaw_link","elbow_link","wrist_roll_link","wrist_pitch_link","wrist_yaw_link")
+ours=["torso_link_rev_1_0","open_g1_dome_head"]+[f"og1_{s}_{l}" for s in ("left","right") for l in ARM_LINKS]+[f"{s}_rubber_hand_open3d" for s in ("left","right")]
 EXCL=[("pelvis","waist_yaw_link"),("pelvis","torso_link")]+[p for sd in ("left","right") for p in [
     ("pelvis",f"{sd}_hip_roll_link"),("pelvis",f"{sd}_hip_yaw_link"),(f"{sd}_hip_pitch_link",f"{sd}_hip_yaw_link"),
     (f"{sd}_hip_roll_link",f"{sd}_knee_link"),(f"{sd}_hip_yaw_link",f"{sd}_ankle_pitch_link"),
@@ -137,12 +143,14 @@ X=f'''<mujoco model="open_g1">
          (Berkeley Humanoid Lite design) on every leg joint and the waist yaw, 23-DoF-style yaw-only waist.
          Ankles: two 6512s in each shin drive pitch + roll through cranks and push rods (G1-style parallel
          ankle), modelled as fixed tendons; the foot is the G1 foot printed, with rod ears. The hip yaw
-         actuator is not designed yet: it is in the masses as a 6512. Masses from tools/legs/build_sim_legs.py.
+         6512 sits in the bottom of the hip roll link. Masses from tools/legs/build_sim_legs.py.
        * head: printed dome head (head.scad) with a RealSense D455; camera 'head_d455'
        * torso: 2020-aluminium frame with printed panels (STL/torso_frame), G1 rev 1.0 shape; collision uses
          the G1 rev 1.0 shell (same outside); 2x DS3235 shoulder servos
-       * arms: 7-DoF, hobby servos (DS3235 / KST X10 Pro / MG92B), printed-part masses and inertias
-         computed from the CAD at 0.56 g/cm3 (PLA ~45 % solid) + servo masses
+       * arms: 7-DoF, hobby servos in screw-in cartridges (STL/arms): standard 40x20 (DS3235) at shoulder
+         pitch, roll and elbow, 23x12 micro servos at shoulder yaw and the wrists. Each arm body's mesh is the
+         printed link plus the actuator parts on it; masses from the CAD at 0.56 g/cm3 (PLA ~45 % solid) +
+         servos + bearings (tools/arms/build_sim_arms.py)
        * hand: rubber hand fixed to the wrist yaw link
        Servo joints use position actuators (hobby servos are position controlled); the joint range is the
        G1 range clipped to the servo travel, centred on the middle of the G1 range. -->

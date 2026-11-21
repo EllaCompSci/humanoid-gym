@@ -13,16 +13,16 @@ The full model uses the G1 joint positions, axes and ranges, with every part swa
 | Part | Change from the G1 model |
 |---|---|
 | Torso | The **framed torso**: 2020 aluminium frame with printed panels, trays and shoulder blocks (`og1_torso_frame.STL`, from `STL/torso_frame`). It has the G1 rev 1.0 outside shape (shoulders at z = 0.24778 m), so collisions use the rev 1.0 shell. Mass 2.03 kg: frame, panels, 2 shoulder servos and fasteners, no electronics. |
-| Arms | 7-DoF on hobby servos. Masses and inertias are computed from the printed CAD plus servo masses. The servo joints use **position actuators** with servo torque limits and armature, damping and friction values. |
+| Arms | 7-DoF on hobby servos in screw-in cartridges, from `STL/arms`. Each arm body's mesh (`og1_{side}_{link}.STL`) is the printed G1 link plus the actuator parts that ride on it: cartridge, cap, horn plate, idler pin. Masses and inertias come from those parts plus servos and bearings (`tools/arms/build_sim_arms.py`). The servo joints use **position actuators** with servo torque limits and armature, damping and friction values. |
 | Joint ranges | The G1 range clipped to the servo's travel, centred on the middle of the G1 range. Fit each servo horn at that centre angle. |
 | Head | The printed dome head (`head.scad`) with a RealSense D455, as `open_g1_dome_head.STL`. It is a fixed `head_link` body with its own mass (0.61 kg: printed parts, D455 and 2 brow servos) and a `head_d455` camera at the camera glass. |
 | Hand | The rubber hand, fixed to the wrist yaw link (`*_rubber_hand_open3d.STL`). |
-| Legs | The printed hip pitch, hip roll, hip yaw (thigh) and knee (shin) links from `STL/legs`, with the right leg mirrored. Masses and inertias come from the parts plus their 6512 actuators. |
+| Legs | The printed hip pitch, hip roll, hip yaw (thigh) and knee (shin) links from `STL/legs`, with the right leg mirrored. The hip roll link and thigh are the `_yaw` versions, with the hip yaw 6512 in the bottom of the hip roll link. Masses and inertias come from the parts plus their 6512 actuators. |
 | Pelvis | The two printed pelvis halves, the waist stator carrier and three 6512s: the two hip pitch actuators and the waist actuator. |
 | Waist | **Yaw only**, as on the 23-DoF G1. One 6512 drives `waist_yaw_joint` about the pelvis z axis. The printed waist yaw link carries the torso. There is no waist roll or pitch. |
 | Leg actuators | The hip, knee and waist joints are 6512 cycloidal actuators (the Berkeley Humanoid Lite design) under torque control, limited to ±23.1 N·m. See [Actuators](#actuators). |
 | Ankles | G1-style parallel ankle. Two 6512s in each shin (`*_ankle_A` upper, `*_ankle_B` lower) drive pitch and roll through cranks and push rods. Each pair is modelled as two fixed tendons. The crank angle is J·[pitch, roll], with J = [[0.85, 0.86], [−0.85, 0.85]], linearised from the exact linkage. So a motor torque reaches the ankle joints as Jᵀτ: up to about 39 N·m in pitch or roll. The motor armature and losses are reflected onto the ankle joints. The foot is the printed G1 foot with the rod ears, using the G1 contact spheres. |
-| Not designed yet | The **hip yaw actuator** counts in the hip roll link mass as a 6512 but is not drawn. The ankle pitch link (the cross) keeps the G1 mass. |
+| Not designed yet | The ankle pitch link (the cross) keeps the G1 mass. |
 
 ## Install
 
@@ -34,8 +34,8 @@ pip install -e .
 
 ### Meshes
 Every mesh both models need is in `src/openG1/assets/mesh/`, so **nothing needs downloading**:
-- The printed parts are the `og1_*.STL` files.
-- The arms, head and hands are the files carried over from the arm work.
+- The printed parts are the `og1_*.STL` files. That includes the 14 arm bodies (`og1_left_shoulder_pitch_link.STL` and so on), each the link with its actuator parts.
+- The head and hands are the files carried over from the arm work.
 - The ankle crosses are the 2 Unitree G1 ankle pitch link meshes (BSD-3).
 
 `python -m openG1.meshes` still works if you delete a Unitree file and need to fetch it again.
@@ -48,6 +48,17 @@ import mujoco
 r = mujoco.Renderer(env.unwrapped.model, 480, 848)
 r.update_scene(env.unwrapped.data, camera="head_d455"); rgb = r.render()
 ```
+
+### Rebuilding the meshes from the hardware repo
+The sim meshes and masses are made from the hardware STLs (`open3dhumanoid/humanoid`, folder `STL/`), then the two models are written from them:
+
+```bash
+python tools/arms/build_sim_arms.py /path/to/humanoid/STL   # arm bodies  -> og1_{side}_{link}.STL, tools/arm_mass.json
+python tools/legs/build_sim_legs.py /path/to/humanoid/STL   # legs, pelvis, waist, torso -> og1_*.STL, tools/legs_mass.json
+python tools/make_mjcf.py /path/to/unitree_mujoco/unitree_robots/g1/g1_29dof.xml   # writes both XMLs
+```
+
+`build_sim_arms.py` reads where each part sits from `STL/arms/arm_assembly.scad`, so it follows the hardware automatically. The servo, bearing and fastener masses are constants at the top of the script; weigh your parts and edit them.
 
 ## Quick start
 
@@ -98,9 +109,9 @@ Both environments run control at 50 Hz (timestep 0.002 s × frame skip 10).
 
 | Joint(s) | Actuator | Torque limit | Travel used |
 |---|---|---|---|
-| Shoulder pitch, shoulder roll | DS3235 (270° version) | 3.43 N·m | 270° |
-| Shoulder yaw, elbow | KST X10 Pro | 1.13 N·m | 160° (check your servo) |
-| Wrist roll, pitch, yaw | TowerPro MG92B | 0.343 N·m | 160° |
+| Shoulder pitch, shoulder roll, elbow | Standard 40×20, DS3235 (270° version) | 3.43 N·m | 270° |
+| Shoulder yaw | 23×12 metal-gear micro, ≥ 5 kg·cm (`MICRO5`) | 0.49 N·m | 180° |
+| Wrist roll, pitch, yaw | 23×12 micro, TowerPro MG92B / MG90S | 0.343 N·m | 160° |
 | Hips, knees, waist yaw | 6512 cycloidal (M6C12 150KV, 15:1) | 23.1 N·m peak | G1 ranges |
 | Ankles (2 per leg, via linkage) | 6512 cycloidal | 23.1 N·m per motor, ~39 N·m at the ankle | G1 ranges |
 
@@ -162,7 +173,7 @@ After you change a printed leg, pelvis, waist or torso part in the hardware repo
 
 ```bash
 python tools/legs/build_sim_legs.py path/to/humanoid/STL     # meshes + legs_mass.json
-python tools/make_mjcf.py path/to/g1_29dof_with_hand.xml
+python tools/make_mjcf.py path/to/g1_29dof.xml
 python tools/check_model.py                                   # foot height, mass, overlaps
 ```
 
@@ -177,12 +188,12 @@ top of `tools/head/head_sdf.py` and run:
 
 ```bash
 python tools/head/export_head.py --stock path/to/unitree/head_link.STL
-python tools/make_mjcf.py path/to/g1_29dof_with_hand.xml
+python tools/make_mjcf.py path/to/g1_29dof.xml
 ```
 
 Mass assumptions:
 - **Print density:** PLA at about 45% solid, i.e. 0.56 g/cm³.
-- **Servos:** DS3235 60 g, X10 Pro 25 g, MG92B 13.8 g.
+- **Arm servos and bearings:** standard 40×20 servo 65 g, 23×12 micro 14 g, 6803 bearing 8 g, 6805 bearing 20 g, plus 4 g of inserts and screws per joint (`SERVO_G`, `BEARING_G`, `FASTENER_G` in `tools/arms/build_sim_arms.py`). The rubber hand counts in the wrist yaw link.
 - **Head:** D455 116 g (datasheet), SG90 9 g each.
 - **6512 actuator:** 0.42 kg. That is the printed housing at 0.56 g/cm³, the 257 g M6C12 motor, and 120 g for the cycloid discs, bearings, encoder, driver and screws (`ACT_EXTRA_G`, an estimate; weigh one and edit it).
 - **Leg links:**
@@ -191,11 +202,23 @@ Mass assumptions:
   |---|---|---|
   | Pelvis | 1.71 kg | 3 actuators |
   | Hip pitch | 0.59 kg | Roll actuator |
-  | Hip roll | 0.84 kg | Planned hip yaw actuator |
+  | Hip roll | 0.77 kg | Hip yaw actuator |
   | Thigh | 1.05 kg | Knee actuator |
   | Shin | 1.15 kg | 2 ankle actuators + cranks |
   | Foot | 0.17 kg | Printed foot (G1: 0.61 kg) |
   | Waist yaw link | 0.14 kg | |
+
+- **Arm links (each side):**
+
+  | Link | Mass | Includes |
+  |---|---|---|
+  | Shoulder pitch | 0.20 kg | Shoulder roll servo (standard) |
+  | Shoulder roll | 0.12 kg | Shoulder yaw servo (micro) |
+  | Upper arm | 0.27 kg | Elbow servo (standard) |
+  | Forearm | 0.14 kg | Wrist roll servo (micro) |
+  | Wrist roll | 0.02 kg | |
+  | Wrist pitch | 0.15 kg | Wrist pitch and yaw servos (micro) |
+  | Wrist yaw + hand | 0.11 kg | Rubber hand |
 
   The whole robot is 14.1 kg.
 - **Torso:** the framed torso is about 2.03 kg (1.05 kg printed at 1.1 g/cm³ for its 3–4 mm walls, 0.61 kg of 2020, servos, fasteners). Add your compute board, drivers and wiring to its inertial in `tools/mass_properties.json`.

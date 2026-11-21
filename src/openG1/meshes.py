@@ -1,6 +1,7 @@
 """Check the model meshes, and re-fetch the Unitree G1 ankle pitch link meshes if they are missing.
 
-All meshes ship in assets/mesh; the printed og1_* parts are rebuilt with tools/legs/build_sim_legs.py."""
+All meshes ship in assets/mesh; the printed og1_* parts are rebuilt with tools/arms/build_sim_arms.py (arms)
+and tools/legs/build_sim_legs.py (legs, pelvis, waist, torso)."""
 from __future__ import annotations
 
 import shutil
@@ -43,7 +44,8 @@ def check_meshes(xml=None) -> None:
         if own:
             raise FileNotFoundError(
                 f"printed-part mesh(es) missing from {MESH_DIR}: {', '.join(own)}\n"
-                "Rebuild them with:   python tools/legs/build_sim_legs.py /path/to/humanoid/STL")
+                "Rebuild them with:   python tools/arms/build_sim_arms.py /path/to/humanoid/STL   (arms)\n"
+                "                     python tools/legs/build_sim_legs.py /path/to/humanoid/STL   (legs, pelvis, torso)")
         raise FileNotFoundError(
             f"{len(missing)} Unitree G1 mesh file(s) missing from {MESH_DIR}:\n  "
             + "\n  ".join(missing)

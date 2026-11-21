@@ -16,8 +16,9 @@ Mass model (edit the constants below if you weigh your parts):
                   + MAD M6C12 150KV motor 257 g + ACT_EXTRA_G (cycloid discs, bearings, pins,
                   encoder, B-G431B-ESC1 driver, screws) lumped at the actuator centre
 The two ankle actuators sit in the shin (OpenScad/legs/ankle/gen_ankle.py); their frames and the
-linkage map come from ankle_linkage.json. The hip yaw actuator is not designed yet: it is added as
-mass only (PLANNED below), so the sim weighs what the robot will weigh.
+linkage map come from ankle_linkage.json (if that file isn't next to STL/, the values already in
+tools/legs_mass.json are reused). The hip yaw actuator sits in the bottom of the hip roll link
+(*_hip_roll_link_integrated_yaw.stl), output down onto the thigh (*_hip_yaw_link_knee_integrated_yaw.stl).
 """
 import json
 import struct
@@ -147,14 +148,15 @@ KNEE_ACT = J_KNEE @ T([0, 15.3733, 0]) @ AZ_TO_Y          # on the hip yaw link 
 WAIST_ACT = T([0, 0, 2.2])                                # in the pelvis, output face up
 
 # body -> actuator frames that are built (meshes shown) and planned (mass only), left side
-BUILT = {"pelvis": [PEL_L, PEL_R, WAIST_ACT], "hip_pitch_link": [ROLL_ACT], "hip_roll_link": [],
+YAW_ACT = J_YAW @ T([0, 0, 0.4]) @ Rx(np.pi)              # in the hip roll link, output down onto the thigh
+BUILT = {"pelvis": [PEL_L, PEL_R, WAIST_ACT], "hip_pitch_link": [ROLL_ACT], "hip_roll_link": [YAW_ACT],
          "hip_yaw_link": [KNEE_ACT], "knee_link": [], "waist_yaw_link": [], "ankle_roll_link": []}
-PLANNED = {"hip_roll_link": [J_YAW @ Rx(np.pi)]}                          # hip yaw, output down onto the yaw link
+PLANNED = {}                                               # every leg actuator is now in the STLs
 ANKLE = None   # filled from OpenScad/legs/ankle/ankle_linkage.json (two shin actuators + cranks)
 
 PARTS = {"pelvis": ["pelvis_left_half_waist", "pelvis_right_half_waist", "waist_stator_carrier"],
-         "hip_pitch_link": ["{s}_hip_pitch_link_integrated"], "hip_roll_link": ["{s}_hip_roll_link_integrated"],
-         "hip_yaw_link": ["{s}_hip_yaw_link_knee_integrated"], "knee_link": ["{s}_knee_link_ankle"],
+         "hip_pitch_link": ["{s}_hip_pitch_link_integrated"], "hip_roll_link": ["{s}_hip_roll_link_integrated_yaw"],
+         "hip_yaw_link": ["{s}_hip_yaw_link_knee_integrated_yaw"], "knee_link": ["{s}_knee_link_ankle"],
          "waist_yaw_link": ["waist_yaw_link_integrated"], "ankle_roll_link": ["{s}_ankle_roll_link_ears"]}
 ACT_SHOWN = ["Housing_-_Bambu_-_Housing_Front", "Housing_-_Bambu_-_Housing_Middle", "Housing_-_Bambu_-_Housing_Rear",
              "Output_-_Bambu_-_Output_Shaft_Front", "Output_-_Bambu_-_Output_Shaft_Rear"]
@@ -174,12 +176,29 @@ def mat_to_posquat(M):
     return (M[:3, 3] / 1000).tolist(), (q / np.linalg.norm(q)).tolist()
 
 
+def posquat_to_mat(p, q):
+    w, x, y, z = q
+    R = np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                  [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                  [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]])
+    M = np.eye(4); M[:3, :3] = R; M[:3, 3] = np.array(p) * 1000
+    return M
+
+
 def main(stl):
     stl = Path(stl)
     legs = stl / "legs"
     global ANKLE
-    ANKLE = json.load(open(stl.parent / "OpenScad" / "legs" / "ankle" / "ankle_linkage.json"))
-    A, B = np.array(ANKLE["geometry"]["act_A"]), np.array(ANKLE["geometry"]["act_B"])
+    ank_file = stl.parent / "OpenScad" / "legs" / "ankle" / "ankle_linkage.json"
+    if ank_file.is_file():
+        ANKLE = json.load(open(ank_file))
+        A, B = np.array(ANKLE["geometry"]["act_A"]), np.array(ANKLE["geometry"]["act_B"])
+        ank_out = None
+    else:                                                    # reuse the linkage already in legs_mass.json
+        prev = json.load(open(OUT_JSON))
+        ank_out = prev["ankle_linkage"]
+        A, B = [posquat_to_mat(p, q) for p, q in prev["knee_link"]["act_geoms"]]
+        print(f"  {ank_file} not found: reusing the ankle linkage in {OUT_JSON.name}")
     BUILT["knee_link"] = [A, B]
     OUT_MESH.mkdir(parents=True, exist_ok=True)
     report = {}
@@ -235,10 +254,12 @@ def main(stl):
         save_stl(OUT_MESH / "og1_torso_frame.STL", panels / 1000)
         report["torso_frame"] = len(panels)
 
-    g = ANKLE["geometry"]
-    out["ankle_linkage"] = dict(jacobian=ANKLE["jacobian_dphi_dq"], phi0=ANKLE["phi_at_zero_rad"],
-                                rod_mm=ANKLE["rod_length_mm"], crank_mm=g["RC"],
-                                note="left leg; right leg = mirror, so its roll column changes sign")
+    if ank_out is None:
+        g = ANKLE["geometry"]
+        ank_out = dict(jacobian=ANKLE["jacobian_dphi_dq"], phi0=ANKLE["phi_at_zero_rad"],
+                       rod_mm=ANKLE["rod_length_mm"], crank_mm=g["RC"],
+                       note="left leg; right leg = mirror, so its roll column changes sign")
+    out["ankle_linkage"] = ank_out
     json.dump(out, open(OUT_JSON, "w"), indent=1)
     for k, v in report.items():
         print(f"  {k:40s} {v}")
